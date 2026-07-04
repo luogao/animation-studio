@@ -1,0 +1,62 @@
+// ============================================================
+// PreviewCanvas.tsx — 居中显示 DynamicScene
+//
+// 职责：
+// - 用 CSS transform: scale() 等比缩放画布以适配外层容器
+// - 通过 ResizeObserver 监听容器尺寸变化重算 scale
+// - 内部挂载 useGsapTimeline，把播放控制器注册到 store
+// - 画布外层是 dot-grid 背景（由 App.css .canvas-area 提供）
+// ============================================================
+
+import { useEffect, useRef, useState } from "react";
+import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
+import { useGsapTimeline } from "../hooks/useGsapTimeline";
+import { DynamicScene } from "./DynamicScene";
+
+export function PreviewCanvas() {
+  const config = useProjectStore(selectPreviewConfig);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  // 构建并注册 timeline（容器 = stageRef，让 selector 限定在画布内）
+  useGsapTimeline(config, stageRef);
+
+  // ── 计算 scale 让画布等比适配 container ──
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const compute = () => {
+      const cw = container.clientWidth;
+      const ch = container.clientHeight;
+      const padding = 48; // 上下左右各 24px
+      const sx = (cw - padding) / config.width;
+      const sy = (ch - padding) / config.height;
+      setScale(Math.min(sx, sy, 1));
+    };
+
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [config.width, config.height]);
+
+  return (
+    <div className="preview-canvas-container" ref={containerRef}>
+      <div
+        className="preview-canvas-stage"
+        ref={stageRef}
+        style={{
+          width: config.width,
+          height: config.height,
+          transform: `scale(${scale})`,
+        }}
+      >
+        <DynamicScene config={config} />
+      </div>
+    </div>
+  );
+}
