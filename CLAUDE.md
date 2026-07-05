@@ -34,12 +34,20 @@ All three serve from the same origin/port (5174). There is no separate Vite dev 
 - `studio.db` + WAL/SHM files
 - `sessions/` — Claude Agent SDK session JSONLs (CLAUDE_CONFIG_DIR override)
 
-Three tables: `projects`, `versions`, `messages`. Versions form a tree via `parent_id`; one draft per project enforced by partial unique index `idx_draft_per_project WHERE status='draft'`. `claude_session_id` on `projects` ties the row to a Claude Agent SDK session.
+Four tables: `projects`, `versions`, `messages`, plus `tool_calls_json` column on `messages` (additive migration via `ensureColumn()`). Versions form a tree via `parent_id`; one draft per project enforced by partial unique index `idx_draft_per_project WHERE status='draft'`. `claude_session_id` on `projects` ties the row to a Claude Agent SDK session.
 
 Server DB modules:
 - `server/db/projects.ts` — `createProject`, `listProjects`, `getProject`, `getProjectRow`, `getSessionId`, `setSessionId`, `renameProject`, `touchProject`.
 - `server/db/versions.ts` — `createDraft`, `updateDraft`, `commitDraft`, `listVersions`, `getDraft`, `rollbackTo` (git-style: creates new committed child of target, never mutates history).
-- `server/db/messages.ts` — `insertMessage`, `listMessages`.
+- `server/db/messages.ts` — `insertMessage`, `listMessages`. `tool_calls_json` column stores serialized `ToolCallRecord[]`; read/write auto-serializes.
+
+### RunState registry (`server/runRegistry.ts`)
+In-memory only (server restart clears it; acceptable since agent subprocess dies too). Tracks:
+- `runs: Map<projectId, RunState>` — active agent run per project (concurrent-run guard: 1 at a time)
+- `subscribers: Map<projectId, Set<WebSocket>>` — all tabs subscribed to a project's broadcasts
+- `subscribe(ws, projectId, sendFn)` — adds ws to set, immediately pushes current RunState (recovery)
+- `broadcast(projectId, msg)` — sends to all subscribers (replaces old unicast-to-originator pattern)
+- `startRun / endRun / updatePhase / appendRunText` — lifecycle helpers called from agent.ts
 
 ### REST API (`server/routes.ts`, mounted at `/api`)
 ```
@@ -55,7 +63,25 @@ DELETE /api/projects/:id/versions/:vid                                → discar
 ```
 
 ### WebSocket protocol
-Hybrid transport — REST handles all CRUD/persistence; WS handles agent streaming only. Client sends `{type: "chat", payload: {text, baseConfig, projectId, baseVersionId}}`; server replies with `stream` (text deltas) / `config_update` (full new config) / `done` / `error`. Wire types in `server/wsHandler.ts` and mirrored in `src/hooks/useWebSocket.ts`.
+Hybrid transport — REST handles CRUD; WS handles agent streaming + state broadcast. Message types:
+
+| Direction | Type | Payload | Purpose |
+|---|---|---|---|
+| C→S | `subscribe` | `{projectId}` | Subscribe to project broadcasts |
+| C→S | `chat` | `{text, baseConfig, projectId, baseVersionId}` | Start agent run |
+| S→C | `agent_state` | `RunState \| null` | Current run phase (recovery on reconnect) |
+| S→C | `stream` | `{delta}` | Text delta (character-level) |
+| S→C | `tool_use` | `{toolCallId, toolName, input}` | Tool call started |
+| S→C | `tool_result` | `{toolUseId, content, isError}` | Tool call finished |
+| S→C | `config_update` | `{config}` | Full SceneConfig from agent tool |
+| S→C | `done` | `{}` | Agent finished successfully |
+| S→C | `error` | `{message}` | Agent errored |
+
+All S→C messages are **broadcast** to all subscribers of that projectId (multi-tab sync). Server-side, agent.ts calls `startRun`/`endRun`/`updatePhase`/`appendRunText` on the registry, which auto-broadcasts `agent_state` transitions.
+Wire types in `server/wsHandler.ts` and mirrored in `src/hooks/useWebSocket.ts`.
+
+### URL routing
+Plain History API at `/p/:projectId` (no react-router). `src/App.tsx` parses on mount, listens `popstate` for back/forward, pushes URL on project switch. `useWebSocket.setCurrentProject(id)` wires the active project to WS subscribe. Refresh → URL parsed → `loadProject(id)` → WS reconnect → `subscribe` → server pushes current `RunState` → UI recovers streaming state.
 
 ### Two tsconfigs
 `tsconfig.json` covers `src/` (frontend, `noEmit`, DOM libs). `tsconfig.server.json` covers `server/` + `src/types/` so the server can import the shared `SceneConfig` type. Both are `noEmit`; runtime is handled by `tsx` (dev) and `vite build` (prod bundle for frontend only). Server code is not bundled for production — it runs under `tsx`/node ESM.
@@ -74,7 +100,7 @@ When editing the type, update **all four** places: the TS interface, the system 
 The old single `sceneStore` was replaced with three focused stores:
 
 - **`src/store/projectStore.ts`** (server-synced, persistent) — `projectId`, `projectTitle`, `headVersionId`, `committedConfig`, `draft: {id, config} | null`, `versions: VersionMeta[]`, `loading`, `error`. Actions: `loadProject`, `createProject`, `commitDraft`, `discardDraft`, `rollbackTo`, `applyAgentConfig` (optimistic local draft write from WS `config_update`). Derived selector `selectPreviewConfig = s.draft?.config ?? s.committedConfig`.
-- **`src/store/agentStore.ts`** (session) — `chatMessages`, `isStreaming` + `addMessage`/`appendDelta`/`setStreaming`/`loadMessages`/`clearForProject`.
+- **`src/store/agentStore.ts`** (session) — `chatMessages`, `isStreaming`, `runState: RunState | null` (phase tracking — `thinking`/`streaming`/`tool_calling`/`complete`/`error`). Actions: `addMessage`, `appendDelta`, `setStreaming`, `loadMessages`, `clearForProject`, `setRunState`, `syncStreamingText` (recovery merge), `appendToolCall`/`resolveToolCall`/`finalizeRunningToolCalls`. Tool calls now persist to DB (`messages.tool_calls_json`), so `loadMessages` restores them after reload.
 - **`src/store/previewStore.ts`** (ephemeral playback UI) — `currentTime`, `isPlaying`, `timelineController` + setters.
 
 Consumers use `useXxxStore((s) => s.field)` selectors (Zustand idiom) — avoid subscribing to the whole store. `canvasSize` was removed entirely; canvas dimensions read/write through `config.width/height` via `applyAgentConfig` (treating canvas-size change as a draft edit).
@@ -83,15 +109,28 @@ Consumers use `useXxxStore((s) => s.field)` selectors (Zustand idiom) — avoid 
 ```
 ChatPanel.onSubmit
   → useWebSocket.sendMessage(text)
-  → if projectStore.draft exists: POST .../commit (auto-commit before next turn)
-  → POST .../messages {role:"user"}
+  → if projectStore.draft exists: auto-commit draft
+  → agentStore.addMessage(user) — local placeholder
+  → agentStore.addMessage(assistant placeholder) + setStreaming(true)
   → WS { type: "chat", payload: {text, baseConfig, projectId, baseVersionId} }
   → handleWsMessage (server/wsHandler.ts)
-  → runAgent (server/agent.ts) — streams Claude Agent SDK output
-  → WS { type: "stream" | "config_update" | "done" | "error" }
-  → dispatchToStore → projectStore.applyAgentConfig + agentStore.appendDelta
+    → subscribe(ws, projectId) — defensive idempotent
+    → insertMessage({role:"user"}) — server-side persist
+    → runAgent (server/agent.ts) — streams Claude Agent SDK output
+      → startRun → broadcast agent_state(thinking)
+      → text_delta → appendRunText → broadcast stream + agent_state(streaming)
+      → tool_use → broadcast tool_use + agent_state(tool_calling)
+      → tool_result → broadcast tool_result + agent_state(streaming)
+      → done → accumulate toolCalls → insertMessage({role:"assistant", toolCalls})
+             → broadcast done + agent_state(complete) → endRun → broadcast agent_state(null)
+  → dispatchToStore (client):
+    stream → agentStore.appendDelta
+    tool_use → agentStore.appendToolCall
+    tool_result → agentStore.resolveToolCall
+    config_update → projectStore.applyAgentConfig
+    done → agentStore.finalizeRunningToolCalls + projectStore.loadProject()
+    agent_state → agentStore.setRunState + syncStreamingText (recovery)
   → DynamicScene re-renders + useGsapTimeline rebuilds timeline & auto-plays
-  → on done: POST .../messages {role:"assistant"} + loadProject() to reconcile
 ```
 
 The agent receives the **current** config in every `chat` message and must return the **complete** new config (never a diff) via the `update_scene_config` tool.
@@ -112,7 +151,13 @@ The agent receives the **current** config in every `chat` message and must retur
 `useGsapTimeline` registers a `TimelineController` (`play`/`pause`/`seek`/`duration`) into `previewStore`. External components (`Timeline`, anything future) read `timelineController` from the store instead of talking to GSAP directly — keep that pattern.
 
 ### WebSocket singleton
-`useWebSocket` keeps a module-level `socket` and auto-reconnects (2s backoff). `dispatchToStore` mutates Zustand directly from incoming messages; `sendMessage` is freestanding (not a hook) so any component can call it.
+`useWebSocket` keeps a module-level `socket` and auto-reconnects (2s backoff). `dispatchToStore` mutates Zustand directly from incoming messages; `sendMessage` is freestanding (not a hook) so any component can call it. `setCurrentProject(id)` is exported for the URL routing layer to wire project switches to WS subscribe — on reconnect, `sendSubscribeIfOpen()` re-subscribes so the server pushes fresh `agent_state`.
+
+### assistant-ui integration
+`src/lib/assistantRuntime.ts` adapts Zustand stores to assistant-ui's `ExternalStoreAdapter` protocol. `ChatPanel.tsx` wraps with `AssistantRuntimeProvider` and uses `ThreadPrimitive`/`ComposerPrimitive` for message list, auto-scroll, and keyboard handling. Message rendering:
+- `MarkdownText` — streaming markdown with caret via `react-markdown` + `remark-gfm`
+- `ToolCallCard` — renders `toolCalls[]` on assistant messages (phase badge, expandable input/output)
+- `PhaseEmpty` + `PhaseStatusChip` — phase-aware placeholders driven by `agentStore.runState`
 
 ### Agent integration (Claude Agent SDK 0.3.x)
 `server/agent.ts` is the only place that talks to the SDK. The pattern:
