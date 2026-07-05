@@ -13,6 +13,14 @@ import {
   selectPreviewConfig,
 } from "../store/projectStore";
 import { PRESET_SIZES } from "../types/scene";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function CanvasSizeControl() {
   const config = useProjectStore(selectPreviewConfig);
@@ -31,7 +39,7 @@ export function CanvasSizeControl() {
   const matchedPreset = PRESET_SIZES.find(
     (p) => p.width === config.width && p.height === config.height
   );
-  const currentLabel = matchedPreset?.label ?? "自定义";
+  const currentValue = matchedPreset?.label ?? "自定义";
 
   const commit = (w: number, h: number) => {
     const safeW = Math.max(32, Math.min(4096, Math.round(w) || 32));
@@ -40,16 +48,16 @@ export function CanvasSizeControl() {
   };
 
   const applyPreset = (label: string) => {
+    if (label === "自定义") return;
     const preset = PRESET_SIZES.find((p) => p.label === label);
     if (preset) commit(preset.width, preset.height);
   };
 
   return (
-    <div className="canvas-size-control">
-      <span className="canvas-size-label">尺寸</span>
+    <div className="flex items-center gap-2 text-[13px]">
+      <span className="text-muted-foreground">尺寸</span>
 
-      <input
-        className="canvas-size-input"
+      <Input
         type="number"
         min={32}
         max={4096}
@@ -59,12 +67,12 @@ export function CanvasSizeControl() {
         onKeyDown={(e) => {
           if (e.key === "Enter") commit(width, height);
         }}
+        className="w-16 h-7 font-mono text-xs px-2"
       />
 
-      <span className="canvas-size-cross">×</span>
+      <span className="text-muted-foreground">×</span>
 
-      <input
-        className="canvas-size-input"
+      <Input
         type="number"
         min={32}
         max={4096}
@@ -74,20 +82,22 @@ export function CanvasSizeControl() {
         onKeyDown={(e) => {
           if (e.key === "Enter") commit(width, height);
         }}
+        className="w-16 h-7 font-mono text-xs px-2"
       />
 
-      <select
-        className="canvas-size-preset"
-        value={currentLabel}
-        onChange={(e) => applyPreset(e.target.value)}
-      >
-        <option value="自定义">自定义</option>
-        {PRESET_SIZES.map((p) => (
-          <option key={p.label} value={p.label}>
-            {p.label}
-          </option>
-        ))}
-      </select>
+      <Select value={currentValue} onValueChange={applyPreset}>
+        <SelectTrigger size="sm" className="h-7 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="自定义">自定义</SelectItem>
+          {PRESET_SIZES.map((p) => (
+            <SelectItem key={p.label} value={p.label}>
+              {p.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

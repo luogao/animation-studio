@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useAgentStore } from "../store/agentStore";
+import { useAgentStore, type RunState } from "../store/agentStore";
 import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
 import type { SceneConfig } from "../types/scene";
 
@@ -8,11 +8,34 @@ import type { SceneConfig } from "../types/scene";
 // ============================================================
 
 interface ServerMessage {
-  type: "stream" | "config_update" | "done" | "error";
+  type:
+    | "stream"
+    | "config_update"
+    | "done"
+    | "error"
+    | "agent_state" // 新增：服务端广播的当前 RunState（含 null = idle）
+    | "tool_use"
+    | "tool_result";
   payload?: {
+    // stream / config_update / done / error
     delta?: string;
     config?: SceneConfig;
     message?: string;
+    // tool_use
+    toolCallId?: string;
+    toolName?: string;
+    input?: unknown;
+    // tool_result
+    toolUseId?: string;
+    content?: string;
+    isError?: boolean;
+    // agent_state —— null 或 RunState 子集
+    runId?: string;
+    projectId?: string;
+    phase?: RunState["phase"];
+    startedAt?: number;
+    streamedText?: string;
+    currentTool?: RunState["currentTool"];
   };
 }
 
@@ -22,6 +45,26 @@ interface ServerMessage {
 
 let socket: WebSocket | null = null;
 let reconnectTimer: number | null = null;
+// 当前订阅的 projectId。App.tsx 在 loadProject 后调用 setCurrentProject。
+// 切换项目时 unsubscribe 旧的 + subscribe 新的；socket 重连时也要重新 subscribe。
+let currentProjectId: string | null = null;
+
+// 由 App.tsx / 路由层调用，跟踪"当前关注哪个 project"
+// 内部会发 subscribe WS 消息（如果 socket 开着）
+export function setCurrentProject(id: string | null): void {
+  if (id === currentProjectId) return;
+  currentProjectId = id;
+  // 立即发一次 subscribe（如果 socket 已开）
+  sendSubscribeIfOpen();
+}
+
+function sendSubscribeIfOpen(): void {
+  if (!currentProjectId) return;
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(
+    JSON.stringify({ type: "subscribe", payload: { projectId: currentProjectId } })
+  );
+}
 
 function ensureSocket(): WebSocket {
   if (
@@ -42,6 +85,8 @@ function ensureSocket(): WebSocket {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
+    // 重连后立即重新订阅当前 project —— 服务端会推一次最新 RunState 给我们
+    sendSubscribeIfOpen();
   };
 
   socket.onmessage = (event) => {
@@ -115,45 +160,83 @@ function dispatchToStore(msg: ServerMessage): void {
     // ── 流结束：持久化 assistant 消息 + 重新加载项目状态 ──
     case "done": {
       agent.setStreaming(false);
+      // 兜底：若有 tool_call 一直没收到 result（SDK 中途出错或被打断），
+      // 标记为 incomplete，避免卡片永远转圈
+      agent.finalizeRunningToolCalls();
       const pid = project.projectId;
       if (pid) {
-        void persistAssistantAndReload(pid);
+        void reloadAfterDone(pid);
       }
+      break;
+    }
+
+    // ── 工具调用开始：往最后一条 assistant 消息追加 tool-call part ──
+    case "tool_use": {
+      const { toolCallId, toolName, input } = msg.payload ?? {};
+      if (!toolCallId || !toolName) break;
+      if (!agent.isStreaming) break;
+      agent.appendToolCall({ toolCallId, toolName, input, status: "running" });
+      break;
+    }
+
+    // ── 工具调用结束：把对应 tool_call 标记为 complete/error ──
+    case "tool_result": {
+      const { toolUseId, content, isError } = msg.payload ?? {};
+      if (!toolUseId) break;
+      agent.resolveToolCall(toolUseId, {
+        content: content ?? "",
+        isError: !!isError,
+      });
       break;
     }
 
     // ── 错误 ──
     case "error": {
+      agent.setStreaming(false);
+      agent.finalizeRunningToolCalls();
       agent.addMessage({
         id: crypto.randomUUID(),
         role: "assistant",
         content: "错误:" + (msg.payload?.message ?? ""),
       });
-      agent.setStreaming(false);
+      break;
+    }
+
+    // ── 服务端广播的当前 RunState ──
+    // null = idle（没 agent 在跑）；非 null = 流式恢复 / 阶段更新
+    case "agent_state": {
+      const p = msg.payload ?? {};
+      if (!p.runId || !p.projectId || !p.phase) {
+        // payload 缺关键字段或为 null → idle
+        agent.setRunState(null);
+        break;
+      }
+      const rs: RunState = {
+        runId: p.runId,
+        projectId: p.projectId,
+        phase: p.phase,
+        startedAt: p.startedAt ?? Date.now(),
+        streamedText: p.streamedText ?? "",
+        currentTool: p.currentTool,
+      };
+      agent.setRunState(rs);
+      // 流式恢复：服务端 streamedText 是权威来源
+      if (rs.streamedText) {
+        agent.syncStreamingText(rs.streamedText);
+      }
       break;
     }
   }
 }
 
 // ============================================================
-// done 时：把完整 assistant 消息写库，再 reload 修正 draft id
+// done 时：reload 项目状态（含 messages、draft）
+// 服务端已经在 onDone 前把 assistant 消息入库了，
+// loadProject 会从 DB 把完整对话同步回 agentStore（见 projectStore.loadProject）。
+// 客户端不再负责持久化 assistant / user 消息——避免 WS 断开时的丢消息 bug。
 // ============================================================
 
-async function persistAssistantAndReload(projectId: string): Promise<void> {
-  const messages = useAgentStore.getState().chatMessages;
-  const last = messages[messages.length - 1];
-  if (last && last.role === "assistant" && last.content) {
-    try {
-      await fetch(`/api/projects/${projectId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "assistant", content: last.content }),
-      });
-    } catch (err) {
-      console.error("[ws] persist assistant failed:", err);
-    }
-  }
-  // 同步项目状态：本地的 __local_pending__ draft 会被真实 DB draft 替换
+async function reloadAfterDone(projectId: string): Promise<void> {
   await useProjectStore.getState().loadProject(projectId);
 }
 
@@ -163,7 +246,7 @@ async function persistAssistantAndReload(projectId: string): Promise<void> {
 // M3 流程：
 // 1. 若有 draft，先 commit 它（plan 的 auto-commit on next message）
 // 2. 用最新的 headVersionId / committedConfig 作为 base
-// 3. 本地 addMessage(user) + REST POST user 消息
+// 3. 本地 addMessage(user) —— 仅占位，服务端在收到 WS chat 时入库
 // 4. 本地 addMessage(assistant 占位) + setStreaming(true)
 // 5. WS 发 chat {text, projectId, baseVersionId, baseConfig}
 //
@@ -191,17 +274,9 @@ export async function sendMessage(text: string): Promise<void> {
   const fresh = useProjectStore.getState();
   const { projectId, headVersionId, committedConfig } = fresh;
 
-  // 3. user 消息：本地 + DB
+  // 3. user 消息：本地占位（服务端会在收到 WS chat 后入库，
+  //    客户端不再 POST，避免 fire-and-forget 竞态）
   agent.addMessage({ id: crypto.randomUUID(), role: "user", content: text });
-  void fetch(`/api/projects/${projectId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      role: "user",
-      content: text,
-      versionId: headVersionId,
-    }),
-  }).catch((err) => console.error("[ws] persist user msg failed:", err));
 
   // 4. assistant 占位 + 进入流式
   agent.addMessage({ id: crypto.randomUUID(), role: "assistant", content: "" });

@@ -130,5 +130,22 @@ export function touchProject(id: string): void {
   );
 }
 
+// ------------------------------------------------------------
+// Claude Agent SDK 会话 id —— 用于 query() 的 sessionId / resume
+// 首次对话时 null，agent.ts 调用完会调 setSessionId 写回
+// ------------------------------------------------------------
+export function getSessionId(projectId: string): string | null {
+  const row = db
+    .prepare(`SELECT claude_session_id FROM projects WHERE id = ?`)
+    .get(projectId) as { claude_session_id: string | null } | undefined;
+  return row?.claude_session_id ?? null;
+}
+
+export function setSessionId(projectId: string, sessionId: string): void {
+  db.prepare(
+    `UPDATE projects SET claude_session_id = ? WHERE id = ?`
+  ).run(sessionId, projectId);
+}
+
 // 重新导出 SceneConfig 类型供 routes 使用
 export type { SceneConfig };

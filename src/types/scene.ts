@@ -117,3 +117,31 @@ export const DEFAULT_SCENE_CONFIG: SceneConfig = {
     { type: "breathing-glow", target: "hook", color: "#E8A230" },
   ],
 };
+
+// ============================================================
+// 导出信封 —— 包装 SceneConfig，附带版本元数据
+// 外部 Remotion 消费者解包一层 envelope.config 即可拿到纯 SceneConfig
+// ============================================================
+
+export interface ExportedSceneConfig {
+  schemaVersion: 1;
+  projectId: string;
+  projectName: string;
+  versionId: string;
+  sequence: number;
+  status: "draft" | "committed";
+  label: string | null;
+  committedAt: number | null; // ms epoch；draft 为 null
+  exportedAt: number; // ms epoch
+  config: SceneConfig;
+}
+
+// 文件名 slug —— 小写、非字母数字转 -、首尾 - 去掉
+export function slugify(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "anim";
+}

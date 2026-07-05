@@ -1,17 +1,39 @@
 // ============================================================
 // VersionToolbar.tsx — 版本管理工具条
 //
-// 4 个动作（plain <button>）：
+// 4 个动作（shadcn Button）：
 // - 提交草稿：projectStore.commitDraft（仅 draft 存在时可用）
 // - 丢弃草稿：projectStore.discardDraft（仅 draft 存在时可用）
-// - 版本下拉：列出所有 committed 版本，选中 → 准备 rollback 目标
+// - 版本下拉（shadcn Select）：列出所有 committed 版本，选中 → 回滚目标
 // - 回滚到选中：projectStore.rollbackTo(selectedId)
 //
 // 状态指示：当前 head 序号 / draft 序号 / loading
+// 确认对话框：用 shadcn AlertDialog 替代 window.confirm / prompt
 // ============================================================
 
 import { useEffect, useState } from "react";
 import { useProjectStore } from "../store/projectStore";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+
+type ConfirmKind = "commit" | "discard" | "rollback" | null;
 
 export function VersionToolbar() {
   const projectId = useProjectStore((s) => s.projectId);
@@ -39,34 +61,38 @@ export function VersionToolbar() {
     rollbackTarget !== headVersionId &&
     committedVersions.length > 1;
 
-  const handleCommit = () => {
-    const label = window.prompt("给这个版本起个名字？（可留空）");
-    if (label === null) return; // 用户取消
-    void commitDraft(label.trim() || undefined);
-  };
+  // ── 确认对话框状态 ──
+  const [confirmKind, setConfirmKind] = useState<ConfirmKind>(null);
+  // commit label 输入框
+  const [commitLabel, setCommitLabel] = useState("");
+  // rollback 目标的可读标签（在弹窗里给用户看）
+  const rollbackTargetVersion = committedVersions.find(
+    (v) => v.id === rollbackTarget
+  );
 
-  const handleDiscard = () => {
-    if (!window.confirm("丢弃当前草稿？此操作不可撤销。")) return;
-    void discardDraft();
+  const openCommit = () => {
+    setCommitLabel("");
+    setConfirmKind("commit");
   };
+  const openDiscard = () => setConfirmKind("discard");
+  const openRollback = () => setConfirmKind("rollback");
 
-  const handleRollback = () => {
-    if (!rollbackTarget) return;
-    if (
-      !window.confirm(
-        `回滚到 v${
-          committedVersions.find((v) => v.id === rollbackTarget)?.sequence ?? "?"
-        }？会先提交当前草稿（如有），再以目标为基础开新分支。`
-      )
-    )
-      return;
-    void rollbackTo(rollbackTarget);
+  const handleConfirm = async () => {
+    const kind = confirmKind;
+    setConfirmKind(null);
+    if (kind === "commit") {
+      await commitDraft(commitLabel.trim() || undefined);
+    } else if (kind === "discard") {
+      await discardDraft();
+    } else if (kind === "rollback" && rollbackTarget) {
+      await rollbackTo(rollbackTarget);
+    }
   };
 
   return (
-    <div className="version-toolbar" style={wrapperStyle}>
+    <div className="flex items-center gap-1.5 shrink-0">
       {/* 状态指示 */}
-      <span style={statusStyle}>
+      <span className="text-xs text-muted-foreground font-mono px-1.5">
         {headVersion
           ? draft
             ? `v${headVersion.sequence} · 草稿中`
@@ -74,113 +100,104 @@ export function VersionToolbar() {
           : "—"}
       </span>
 
-      <button
+      <Button
         type="button"
-        onClick={handleCommit}
+        onClick={openCommit}
         disabled={!hasDraft || loading}
-        style={{
-          ...btnStyle,
-          background: hasDraft ? "#E8A230" : "#333",
-          color: hasDraft ? "#0a0a0b" : "#666",
-          opacity: loading ? 0.5 : 1,
-          cursor: !hasDraft || loading ? "not-allowed" : "pointer",
-        }}
+        variant={hasDraft ? "default" : "secondary"}
+        size="xs"
       >
         提交草稿
-      </button>
+      </Button>
 
-      <button
+      <Button
         type="button"
-        onClick={handleDiscard}
+        onClick={openDiscard}
         disabled={!hasDraft || loading}
-        style={{
-          ...btnStyle,
-          opacity: !hasDraft || loading ? 0.5 : 1,
-          cursor: !hasDraft || loading ? "not-allowed" : "pointer",
-        }}
+        variant="outline"
+        size="xs"
       >
         丢弃草稿
-      </button>
+      </Button>
 
-      <span style={dividerStyle}>|</span>
+      <span className="text-muted-foreground/40 px-1">|</span>
 
-      <select
+      <Select
         value={rollbackTarget}
-        onChange={(e) => setRollbackTarget(e.target.value)}
+        onValueChange={setRollbackTarget}
         disabled={committedVersions.length === 0 || loading}
-        style={selectStyle}
-        title="选择回滚目标版本"
       >
-        {committedVersions.length === 0 && (
-          <option value="">— 无版本 —</option>
-        )}
-        {committedVersions
-          .slice()
-          .sort((a, b) => b.sequence - a.sequence)
-          .map((v) => (
-            <option key={v.id} value={v.id}>
-              v{v.sequence}
-              {v.label ? ` · ${v.label}` : ""}
-              {v.id === headVersionId ? "  (head)" : ""}
-            </option>
-          ))}
-      </select>
+        <SelectTrigger size="sm" className="h-7 text-xs w-32" title="选择回滚目标版本">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {committedVersions.length === 0 && (
+            <SelectItem value="">— 无版本 —</SelectItem>
+          )}
+          {committedVersions
+            .slice()
+            .sort((a, b) => b.sequence - a.sequence)
+            .map((v) => (
+              <SelectItem key={v.id} value={v.id}>
+                v{v.sequence}
+                {v.label ? ` · ${v.label}` : ""}
+                {v.id === headVersionId ? "  (head)" : ""}
+              </SelectItem>
+            ))}
+        </SelectContent>
+      </Select>
 
-      <button
+      <Button
         type="button"
-        onClick={handleRollback}
+        onClick={openRollback}
         disabled={!canRollback || loading}
-        style={{
-          ...btnStyle,
-          opacity: !canRollback || loading ? 0.5 : 1,
-          cursor: !canRollback || loading ? "not-allowed" : "pointer",
-        }}
+        variant="outline"
+        size="xs"
       >
         回滚
-      </button>
+      </Button>
+
+      {/* ── 确认对话框（commit / discard / rollback 共用 AlertDialog）── */}
+      <AlertDialog open={confirmKind !== null} onOpenChange={(o) => !o && setConfirmKind(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmKind === "commit" && "提交草稿为新版本"}
+              {confirmKind === "discard" && "丢弃当前草稿"}
+              {confirmKind === "rollback" &&
+                `回滚到 v${rollbackTargetVersion?.sequence ?? "?"}`}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <span>
+                {confirmKind === "commit" &&
+                  "草稿会作为新的 committed 版本保存，当前 head 推进。版本历史不会丢。"}
+                {confirmKind === "discard" &&
+                  "草稿会被删除，回到当前 head 的状态。此操作不可撤销。"}
+                {confirmKind === "rollback" &&
+                  "会先提交当前草稿（如有），再以目标版本为父开一个新的 committed 分支。历史不会被删除。"}
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {confirmKind === "commit" && (
+            <div className="py-2">
+              <Input
+                value={commitLabel}
+                onChange={(e) => setCommitLabel(e.target.value)}
+                placeholder="给这个版本起个名字？（可留空）"
+                autoFocus
+              />
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirm}>
+              确认
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
-
-// ============================================================
-// 样式
-// ============================================================
-
-const wrapperStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  flexShrink: 0,
-};
-
-const statusStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "#999",
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  padding: "0 6px",
-};
-
-const btnStyle: React.CSSProperties = {
-  border: "1px solid #333",
-  borderRadius: 4,
-  padding: "5px 10px",
-  fontSize: 12,
-  fontWeight: 500,
-  whiteSpace: "nowrap",
-};
-
-const selectStyle: React.CSSProperties = {
-  background: "#1a1a1a",
-  border: "1px solid #333",
-  borderRadius: 4,
-  color: "#eee",
-  padding: "4px 6px",
-  fontSize: 12,
-  outline: "none",
-  cursor: "pointer",
-};
-
-const dividerStyle: React.CSSProperties = {
-  color: "#444",
-  padding: "0 4px",
-};

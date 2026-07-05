@@ -1,0 +1,533 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ============================================================
+   Duotone Poster — rds-51-duotone-poster
+   双色调海报：米色纸 + 海报红 + 深蓝紫
+   设计哲学：色块、大号粗体、高对比、无渐变、无装饰
+   ============================================================ */
+:root {
+  --radius: 0.25rem; /* poster 偏好硬边角，用小圆角 */
+
+  /* ── 三色调色板（Duotone Poster tokens）── */
+  --paper: #f4ead3;     /* 背景 */
+  --spot-1: #ff3a38;    /* 主色：海报红 */
+  --spot-2: #1a1a3a;    /* 深蓝紫：文字/边框 */
+
+  /* ── shadcn token 映射 ── */
+  --background: var(--paper);
+  --foreground: var(--spot-2);
+
+  --card: var(--paper);
+  --card-foreground: var(--spot-2);
+
+  --popover: var(--paper);
+  --popover-foreground: var(--spot-2);
+
+  /* 主色（CTA / 用户气泡）：海报红 */
+  --primary: var(--spot-1);
+  --primary-foreground: var(--paper);
+
+  /* 次级色（assistant 气泡 / 强调容器）：深蓝紫 */
+  --secondary: var(--spot-2);
+  --secondary-foreground: var(--paper);
+
+  --muted: #e8dec5;            /* 略深米色（hover/禁用容器）*/
+  --muted-foreground: #5a5a72;  /* 海军蓝降饱和（次要文字）*/
+
+  --accent: var(--spot-1);     /* Duotone 精神：accent == primary */
+  --accent-foreground: var(--paper);
+
+  --destructive: var(--spot-1);
+  --destructive-foreground: var(--paper);
+
+  /* 高对比边框 —— 海军蓝 */
+  --border: var(--spot-2);
+  --input: var(--spot-2);
+  --ring: var(--spot-1);
+
+  /* Chart（预留） */
+  --chart-1: var(--spot-1);
+  --chart-2: var(--spot-2);
+  --chart-3: #b8a87a;
+  --chart-4: #5a5a72;
+  --chart-5: #8a8aa8;
+
+  /* Sidebar（预留） */
+  --sidebar: var(--paper);
+  --sidebar-foreground: var(--spot-2);
+  --sidebar-primary: var(--spot-1);
+  --sidebar-primary-foreground: var(--paper);
+  --sidebar-accent: var(--spot-2);
+  --sidebar-accent-foreground: var(--paper);
+  --sidebar-border: var(--spot-2);
+  --sidebar-ring: var(--spot-1);
+
+  /* 字体：Futura 不可用，走 Helvetica Neue / system 兜底；
+     display 用于标题，更紧的字距和粗体感 */
+  --font-sans: "Futura", "Helvetica Neue", "Inter",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", ui-monospace,
+    Menlo, monospace;
+  --font-display: "Futura", "Impact", "Helvetica Neue", "Arial Black",
+    sans-serif;
+}
+
+/* ============================================================
+   Tailwind v4 主题映射 —— bg-background / text-primary 等
+   工具类从 :root 派生
+   ============================================================ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-display: var(--font-display);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+}
+
+/* ============================================================
+   Base layer
+   ============================================================ */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+  body {
+    font-family: var(--font-sans);
+    background: var(--paper);
+    color: var(--spot-2);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    /* poster 风格：略紧字距 */
+    letter-spacing: -0.005em;
+  }
+  /* 所有标题用 display 字体 */
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    font-weight: 700;
+  }
+}
+
+/* ============================================================
+   结构布局 —— Duotone 风格：纯色块、硬边、无装饰
+   ============================================================ */
+.app {
+  display: grid;
+  grid-template-columns: 1fr 2fr; /* 对话区 1/3 · 画布区 2/3 */
+  height: 100vh;
+  width: 100vw;
+}
+
+/* 左栏：对话面板 —— 米色纸 */
+.chat-panel {
+  background: var(--paper);
+  border-right: 2px solid var(--spot-2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  min-height: 0;
+}
+
+.chat-input-area {
+  padding: 12px 16px 16px;
+  border-top: 2px solid var(--spot-2);
+  background: var(--paper);
+}
+
+/* 右栏：预览画布区 —— 也是米色，动画预览像贴在墙上的海报 */
+.canvas-area {
+  background-color: var(--paper);
+  /* 去掉点阵网格 —— Duotone 不要装饰 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 工具条：纯米色 + 海军蓝下边框（去掉 backdrop-blur） */
+.canvas-toolbar {
+  padding: 10px 20px;
+  border-bottom: 2px solid var(--spot-2);
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+}
+
+.canvas-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 24px;
+}
+
+.placeholder-text {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* 预览画布容器：硬边 + 海军蓝 2px 边框（替代原黑色软阴影） */
+.preview-canvas-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.preview-canvas-stage {
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  /* 海报风格：硬边框，无柔光阴影 */
+  box-shadow: 0 0 0 2px var(--spot-2);
+  transform-origin: center center;
+}
+
+/* 底部时间轴：纯米色 + 海军蓝上边框 */
+.canvas-footer {
+  padding: 10px 20px;
+  border-top: 2px solid var(--spot-2);
+  background: var(--paper);
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+}
+
+.timeline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.timeline-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--spot-2);
+  min-width: 92px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* range 滑块（Timeline 用）—— 海军蓝轨道 + 红色 thumb，高对比 */
+.timeline-range {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--spot-2);
+  border-radius: 0;
+  outline: none;
+  cursor: pointer;
+}
+.timeline-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 0;  /* 硬边方块，更 poster */
+  background: var(--spot-1);
+  border: 2px solid var(--spot-2);
+  cursor: pointer;
+}
+.timeline-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 0;
+  background: var(--spot-1);
+  border: 2px solid var(--spot-2);
+  cursor: pointer;
+}
+.timeline-range:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+ * 流式 caret（assistant 文字末尾闪烁光标）
+ * ============================================================ */
+
+.streaming-caret {
+  display: inline-block;
+  width: 8px;
+  height: 1em;
+  background: var(--foreground);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: caret-blink 1s steps(2) infinite;
+}
+@keyframes caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .streaming-caret {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+/* ============================================================
+ * Markdown 渲染（Duotone Poster 风格）
+ * assistant 消息走 react-markdown，覆盖默认浏览器样式
+ * ============================================================ */
+
+.markdown-text.prose-studio {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.markdown-text.prose-studio > :first-child {
+  margin-top: 0;
+}
+.markdown-text.prose-studio > :last-child {
+  margin-bottom: 0;
+}
+.markdown-text.prose-studio p {
+  margin: 0.4em 0;
+}
+.markdown-text.prose-studio strong {
+  font-weight: 700;
+}
+.markdown-text.prose-studio em {
+  font-style: italic;
+}
+.markdown-text.prose-studio del {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+.markdown-text.prose-studio ul,
+.markdown-text.prose-studio ol {
+  margin: 0.4em 0;
+  padding-left: 1.2em;
+}
+.markdown-text.prose-studio li {
+  margin: 0.15em 0;
+}
+.markdown-text.prose-studio li > input[type="checkbox"] {
+  margin-right: 0.4em;
+}
+.markdown-text.prose-studio a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown-text.prose-studio code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.85em;
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  padding: 0.1em 0.3em;
+  border-radius: 2px;
+}
+.markdown-text.prose-studio pre {
+  background: color-mix(in srgb, var(--background) 92%, var(--foreground) 8%);
+  border: 2px solid var(--foreground);
+  padding: 0.6em 0.8em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  font-size: 0.8em;
+  line-height: 1.4;
+}
+.markdown-text.prose-studio pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+.markdown-text.prose-studio blockquote {
+  border-left: 3px solid var(--primary);
+  padding-left: 0.8em;
+  margin: 0.5em 0;
+  color: var(--muted-foreground);
+}
+.markdown-text.prose-studio h1,
+.markdown-text.prose-studio h2,
+.markdown-text.prose-studio h3,
+.markdown-text.prose-studio h4 {
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0.6em 0 0.3em;
+}
+.markdown-text.prose-studio h1 { font-size: 1.3em; }
+.markdown-text.prose-studio h2 { font-size: 1.15em; }
+.markdown-text.prose-studio h3,
+.markdown-text.prose-studio h4 { font-size: 1em; }
+.markdown-text.prose-studio table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.85em;
+}
+.markdown-text.prose-studio th,
+.markdown-text.prose-studio td {
+  border: 1px solid var(--foreground);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+.markdown-text.prose-studio th {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  font-weight: 700;
+}
+.markdown-text.prose-studio hr {
+  border: none;
+  border-top: 2px solid var(--foreground);
+  margin: 0.8em 0;
+}
+
+/* ============================================================
+ * 工具调用卡片
+ * ============================================================ */
+
+.tool-card {
+  border: 2px solid var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 5%, var(--card));
+  padding: 0.4em 0.6em;
+  margin-top: 0.5em;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.78em;
+}
+.tool-card[data-status="running"] {
+  border-color: var(--primary);
+}
+.tool-card[data-status="error"] {
+  border-color: #ff5e5e;
+}
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tool-card-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2em;
+  height: 1.2em;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.tool-card[data-status="complete"] .tool-card-status {
+  color: var(--primary);
+}
+.tool-card[data-status="error"] .tool-card-status {
+  color: #ff5e5e;
+}
+.tool-card-spinner {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  border: 2px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+  border-top-color: var(--foreground);
+  border-radius: 50%;
+  animation: tool-spin 0.7s linear infinite;
+}
+@keyframes tool-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool-card-spinner {
+    animation: none;
+    border-top-color: var(--primary);
+  }
+}
+.tool-card-name {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.tool-card-summary {
+  color: var(--muted-foreground);
+  margin-left: 0.4em;
+}
+.tool-card-toggle {
+  margin-left: auto;
+  opacity: 0.6;
+}
+.tool-card-body {
+  margin: 0.5em 0 0;
+  padding: 0.4em 0.6em;
+  background: color-mix(in srgb, var(--background) 92%, var(--foreground) 4%);
+  border: 1px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.tool-card-result {
+  margin-top: 0.4em;
+  padding-top: 0.4em;
+  border-top: 1px dashed color-mix(in srgb, var(--foreground) 25%, transparent);
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--muted-foreground);
+}
+.tool-card-result[data-error] {
+  color: #ff5e5e;
+}

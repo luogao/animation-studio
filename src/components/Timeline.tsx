@@ -9,6 +9,7 @@
 
 import { usePreviewStore } from "../store/previewStore";
 import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
+import { Button } from "@/components/ui/button";
 
 export function Timeline() {
   const controller = usePreviewStore((s) => s.timelineController);
@@ -32,15 +33,16 @@ export function Timeline() {
 
   return (
     <div className="timeline">
-      <button
-        className="timeline-play-btn"
+      <Button
         onClick={togglePlay}
         disabled={!controller}
         aria-label={isPlaying ? "暂停" : "播放"}
-        type="button"
+        variant="outline"
+        size="icon-sm"
+        className="shrink-0"
       >
         {isPlaying ? "❚❚" : "▶"}
-      </button>
+      </Button>
 
       <input
         className="timeline-range"

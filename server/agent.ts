@@ -22,6 +22,7 @@
 
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { query, tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { buildSystemPrompt, type ProjectContextForPrompt } from "./prompts.js";
@@ -32,7 +33,16 @@ import {
   listVersions,
   rollbackTo,
 } from "./db/versions.js";
-import { getProjectRow } from "./db/projects.js";
+import { getProjectRow, getSessionId, setSessionId } from "./db/projects.js";
+import { SESSIONS_DIR } from "./db/index.js";
+import { insertMessage, type ToolCallRecord } from "./db/messages.js";
+import {
+  startRun,
+  endRun,
+  updatePhase,
+  appendRunText,
+  getRun,
+} from "./runRegistry.js";
 import type {
   SceneConfig,
   Actor,
@@ -138,7 +148,60 @@ export interface AgentCallbacks {
   onConfigUpdate: (config: SceneConfig) => void;
   onDone: () => void;
   onError: (error: string) => void;
+  // 工具调用生命周期：tool_use 块到达时 → onToolUse；
+  // 后续 user 消息里匹配的 tool_result 块到达时 → onToolResult。
+  // 前端据此渲染工具卡片（running → complete/error）。
+  onToolUse: (call: {
+    toolCallId: string;
+    toolName: string;
+    input: unknown;
+  }) => void;
+  onToolResult: (res: {
+    toolUseId: string;
+    content: string;
+    isError: boolean;
+  }) => void;
 }
+
+// ============================================================
+// SDK 迭代器 yield 类型 —— 本地窄化（避免引入整个 Anthropic SDK 类型图）
+// ============================================================
+// SDK 实际 yield 的 union 太大（SDKMessage 含几十个变体），
+// 这里只列出本文件关心的三种 + 兜底 fallback。
+type SDKYieldEvent = {
+  type: "stream_event";
+  event: {
+    type: string;
+    delta?: { type: string; text?: string };
+  };
+};
+type SDKYieldAssistantMessage = {
+  type: "assistant";
+  message: {
+    content: Array<{
+      type: string;
+      text?: string;
+      id?: string;
+      name?: string;
+      input?: unknown;
+    }>;
+  };
+};
+type SDKYieldUserMessage = {
+  type: "user";
+  message: {
+    content: Array<
+      | string
+      | {
+          type: string;
+          tool_use_id?: string;
+          content?: unknown;
+          is_error?: boolean;
+        }
+    >;
+  };
+};
+type SDKYieldOther = { type: string };
 
 // ============================================================
 // Agent 上下文 —— 由 wsHandler 在每次 chat 时注入
@@ -227,9 +290,9 @@ export async function runAgent(
   ctx: AgentProjectContext,
   callbacks: AgentCallbacks
 ): Promise<void> {
+  // 提到 try 外面，catch / finally 都能用（endRun 需要 projectId）
+  const { projectId, baseVersionId } = ctx;
   try {
-    const { projectId, baseVersionId } = ctx;
-
     // ── 拉项目/版本上下文，用于 system prompt + 每轮 prefix ──
     const projectContext = buildProjectContext(projectId, baseVersionId);
     const turnPrefix = buildTurnPrefix(projectContext);
@@ -363,7 +426,20 @@ ${JSON.stringify(currentConfig, null, 2)}
 
 请根据用户消息设计/修改动画。调用 update_scene_config 工具输出完整的新 config，并简要说明你的设计思路。涉及版本历史/回滚时使用对应工具，回答里可以引用版本号让用户对得上号。`;
 
+    // ── 会话续接：首次分配 sessionId，后续 resume ──
+    // SDK 把会话 JSONL 写到 <CLAUDE_CONFIG_DIR>/projects/<sanitized-cwd>/<sid>.jsonl
+    // 我们用 CLAUDE_CONFIG_DIR 把它定位到项目内的 .data/sessions/
+    const existingSid = getSessionId(projectId);
+    const sessionId = existingSid ?? randomUUID();
+    const sessionOptions = existingSid
+      ? { resume: sessionId }
+      : { sessionId };
+
     // ── 发起 query ──
+    // includePartialMessages: true —— 让 SDK 在流式期间吐 stream_event 消息
+    // （SDKPartialAssistantMessage，携带 Anthropic 的 content_block_delta）。
+    // 这是实现真·打字机效果的关键：默认 false 时只有每个 assistant message 的
+    // 完整 text block，用户看到的是 burst-per-message 而非 token 流。
     const result = query({
       prompt,
       options: {
@@ -375,34 +451,209 @@ ${JSON.stringify(currentConfig, null, 2)}
         maxTurns: 50,
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
+        includePartialMessages: true,
+        env: { ...process.env, CLAUDE_CONFIG_DIR: SESSIONS_DIR },
+        ...sessionOptions,
       },
     });
 
-    // ── 流式消费 SDK 消息 ──
-    let firstDelta = true;
-    for await (const message of result) {
-      const msg = message as {
-        type: string;
-        message?: {
-          content: Array<{ type: string; text?: string }>;
-        };
-      };
+    // ── 注册 RunState（registry 立即广播 agent_state 给所有订阅者）──
+    // 跑完一定要 endRun —— 见函数末尾 finally。如果不 endRun，RunState 会
+    // 永远留在 Map 里，下次该 project 发 chat 会被并发保护拒绝。
+    const runId = randomUUID();
+    startRun(projectId, runId);
 
-      if (msg.type === "assistant" && msg.message?.content) {
-        for (const block of msg.message.content) {
-          if (block.type === "text" && block.text) {
-            const prefix = firstDelta ? "" : "\n\n";
-            callbacks.onTextDelta(prefix + block.text);
+    // ── 流式消费 SDK 消息 ──
+    // 三种需要处理的 yield：
+    //   stream_event → text_delta（字符级真流式）
+    //   assistant     → tool_use 块（工具调用开始，args 已组装完毕）
+    //   user          → tool_result 块（工具调用结束，含结果/错误）
+    // 其他 yield 类型（result/system/control 等）忽略。
+    // 注意：assistant 消息里的 text 块已在 stream_event 阶段流过，这里不再发，
+    // 否则会双倍。
+    // assistantText 累加改成走 RunState.streamedText（appendRunText）——单一来源，
+    // 重连恢复时客户端能从 RunState 拿到当前已生成的部分。
+    // pendingSegmentSep —— 在 assistant 消息 yield 后置 true，表示下一个
+    // text_delta 是新一轮 assistant 文本的开头，需要前置 "\n\n" 与同一条
+    // ChatItem 内已有文本分段（多 turn 文本拼接进同一条消息时的视觉分隔）。
+    // 关键：token 流式期间同一条 assistant 消息内的连续 delta 不能加任何前缀，
+    // 否则每个字符之间都会被 "\n\n" 断开（旧 bug：react-markdown 把每个字
+    // 渲染成独立 <p>，markdown 语法被切碎失效）。
+    let firstDelta = true;
+    let pendingSegmentSep = false;
+    // 累积本轮所有工具调用（多个 assistant turn 都算），done 时随 assistant
+    // 消息一起入库 —— 这样刷新页面后 ToolCallCard 仍然能渲染。
+    // tool_use 块 → push running；tool_result 块 → 找到对应条目更新状态。
+    const accumulatedToolCalls: ToolCallRecord[] = [];
+    for await (const message of result) {
+      const msg = message as
+        | SDKYieldEvent
+        | SDKYieldAssistantMessage
+        | SDKYieldUserMessage
+        | SDKYieldOther;
+
+      switch (msg.type) {
+        case "stream_event": {
+          const evt = (msg as SDKYieldEvent).event;
+          if (
+            evt.type === "content_block_delta" &&
+            evt.delta?.type === "text_delta" &&
+            evt.delta.text
+          ) {
+            const prefix = firstDelta
+              ? ""
+              : pendingSegmentSep
+                ? "\n\n"
+                : "";
+            const piece = prefix + evt.delta.text;
+            callbacks.onTextDelta(piece);
+            appendRunText(projectId, piece);
+            updatePhase(projectId, "streaming");
             firstDelta = false;
+            pendingSegmentSep = false;
           }
-          // tool_use block 由 MCP handler 处理，不需要在此解析
+          // input_json_delta（工具 args 流式 partial）刻意不转发 ——
+          // 等到 assistant 消息里的 tool_use 块组装完成再一次性发。
+          break;
         }
+
+        case "assistant": {
+          const content = (msg as SDKYieldAssistantMessage).message.content;
+          for (const block of content) {
+            if (block.type === "tool_use" && block.id && block.name) {
+              callbacks.onToolUse({
+                toolCallId: block.id,
+                toolName: block.name,
+                input: block.input,
+              });
+              updatePhase(projectId, "tool_calling", {
+                currentTool: {
+                  toolCallId: block.id,
+                  toolName: block.name,
+                  status: "running",
+                },
+              });
+              // 同步累积到本轮 toolCalls 列表（用于 done 时持久化）
+              accumulatedToolCalls.push({
+                toolCallId: block.id,
+                toolName: block.name,
+                input: block.input,
+                status: "running",
+              });
+            }
+            // text 块已通过 stream_event 流过 —— 跳过
+            // thinking 块 —— 跳过（不展示）
+          }
+          // assistant 消息结束：若后续还有 text_delta（tool_result 之后的
+          // 新一轮 assistant 文本），用空行与上一段分开
+          pendingSegmentSep = true;
+          break;
+        }
+
+        case "user": {
+          const content = (msg as SDKYieldUserMessage).message.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (
+                typeof block === "object" &&
+                block.type === "tool_result" &&
+                block.tool_use_id
+              ) {
+                // tool_result.content 可能是 string、ContentBlock[] 或 undefined
+                const raw = block.content;
+                let text: string;
+                if (typeof raw === "string") {
+                  text = raw;
+                } else if (Array.isArray(raw)) {
+                  text = raw
+                    .map((c) =>
+                      typeof c === "object" &&
+                      c !== null &&
+                      c.type === "text" &&
+                      typeof c.text === "string"
+                        ? c.text
+                        : ""
+                    )
+                    .join("");
+                } else {
+                  text = "";
+                }
+                callbacks.onToolResult({
+                  toolUseId: block.tool_use_id,
+                  content: text,
+                  isError: !!block.is_error,
+                });
+                // 同步更新累积列表中对应条目的状态
+                const idx = accumulatedToolCalls.findIndex(
+                  (tc) => tc.toolCallId === block.tool_use_id
+                );
+                if (idx >= 0) {
+                  accumulatedToolCalls[idx] = {
+                    ...accumulatedToolCalls[idx],
+                    status: block.is_error ? "error" : "complete",
+                    resultContent: text,
+                    isError: !!block.is_error,
+                  };
+                }
+              }
+            }
+          }
+          // tool_result 之后通常还有更多 text_delta —— 切回 streaming/thinking
+          updatePhase(projectId, "streaming", { currentTool: undefined });
+          break;
+        }
+
+        default:
+          // result / system / control / etc. —— 忽略
+          break;
       }
     }
 
+    // ── 持久化 assistant 消息（服务端负责，WS 断开也不丢）──
+    // 文本累加在 RunState.streamedText 里，这里读出来一次性入库。
+    // 工具调用累积在 accumulatedToolCalls，随消息一起持久化 —— 刷新后卡片不丢。
+    const finalText = getRun(projectId)?.streamedText ?? "";
+    if (finalText.trim()) {
+      try {
+        insertMessage({
+          projectId,
+          role: "assistant",
+          content: finalText,
+          toolCalls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+        });
+      } catch (err) {
+        // 写库失败不让 done 不发——但前端 reload 后会缺这条消息
+        console.error(
+          `[agent] persist assistant message failed for ${projectId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    }
+
+    // 广播一次 complete，让 UI 能看到 "完成" 一瞬（紧接着 done + endRun）
+    updatePhase(projectId, "complete");
     callbacks.onDone();
+    endRun(projectId);
+
+    // 首轮分配的 sessionId 落库，后续轮次才能 resume
+    if (!existingSid) {
+      try {
+        setSessionId(projectId, sessionId);
+      } catch (err) {
+        // 持久化失败不阻塞本轮 —— 但下一轮拿不到 sid，agent 会失忆
+        console.error(
+          `[agent] failed to persist sessionId for ${projectId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    }
   } catch (err) {
+    // 错误也要更新 RunState + endRun，否则并发保护会卡住下一轮
+    updatePhase(projectId, "error");
     callbacks.onError(err instanceof Error ? err.message : String(err));
+    endRun(projectId);
   }
 }
 

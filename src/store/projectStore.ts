@@ -14,7 +14,7 @@
 import { create } from "zustand";
 import type { SceneConfig } from "../types/scene";
 import { DEFAULT_SCENE_CONFIG } from "../types/scene";
-import { useAgentStore } from "./agentStore";
+import { useAgentStore, type ToolCallRecord } from "./agentStore";
 
 // ============================================================
 // 版本元信息（与 server/db/versions.ts 的 VersionMeta 对齐）
@@ -46,6 +46,8 @@ interface ProjectDetailResponse {
     content: string;
     version_id: string | null;
     created_at: number;
+    // 服务端 messages.tool_calls_json 反序列化后的数组（assistant 才有）
+    tool_calls?: ToolCallRecord[];
   }[];
   headId: string | null;
   draftId: string | null;
@@ -141,12 +143,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         loading: false,
       });
 
-      // 同步消息到 agentStore
+      // 同步消息到 agentStore（含 toolCalls，刷新后卡片不丢）
       useAgentStore.getState().loadMessages(
         data.messages.map((m) => ({
           id: m.id,
           role: m.role,
           content: m.content,
+          toolCalls: m.tool_calls,
         }))
       );
     } catch (err) {
