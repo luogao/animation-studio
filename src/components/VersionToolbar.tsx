@@ -9,9 +9,10 @@
 //
 // 状态指示：当前 head 序号 / draft 序号 / loading
 // 确认对话框：用 shadcn AlertDialog 替代 window.confirm / prompt
+// 项目重命名：点击标题进入编辑模式，Enter 保存，Esc 取消
 // ============================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +38,7 @@ type ConfirmKind = "commit" | "discard" | "rollback" | null;
 
 export function VersionToolbar() {
   const projectId = useProjectStore((s) => s.projectId);
+  const projectTitle = useProjectStore((s) => s.projectTitle);
   const versions = useProjectStore((s) => s.versions);
   const headVersionId = useProjectStore((s) => s.headVersionId);
   const draft = useProjectStore((s) => s.draft);
@@ -44,6 +46,38 @@ export function VersionToolbar() {
   const commitDraft = useProjectStore((s) => s.commitDraft);
   const discardDraft = useProjectStore((s) => s.discardDraft);
   const rollbackTo = useProjectStore((s) => s.rollbackTo);
+  const renameProject = useProjectStore((s) => s.renameProject);
+
+  // ── 项目重命名状态 ──
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  const startEditTitle = () => {
+    setTitleDraft(projectTitle ?? "");
+    setEditingTitle(true);
+  };
+  const saveTitle = async () => {
+    const trimmed = titleDraft.trim();
+    if (trimmed && trimmed !== projectTitle) {
+      try {
+        await renameProject(trimmed);
+      } catch {
+        // error already set in store
+      }
+    }
+    setEditingTitle(false);
+  };
+  const cancelEditTitle = () => {
+    setEditingTitle(false);
+  };
+
+  useEffect(() => {
+    if (editingTitle && titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    }
+  }, [editingTitle]);
 
   // 回滚目标：默认指向当前 head
   const [rollbackTarget, setRollbackTarget] = useState<string>("");
@@ -91,6 +125,32 @@ export function VersionToolbar() {
 
   return (
     <div className="flex items-center gap-1.5 shrink-0">
+      {/* ── 项目名称（点击可编辑）── */}
+      {editingTitle ? (
+        <input
+          ref={titleInputRef}
+          value={titleDraft}
+          onChange={(e) => setTitleDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveTitle();
+            if (e.key === "Escape") cancelEditTitle();
+          }}
+          onBlur={saveTitle}
+          className="h-6 w-36 text-xs font-medium bg-background border border-primary/50 rounded px-1.5 py-0 focus:outline-none focus:border-primary"
+          disabled={loading}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={startEditTitle}
+          disabled={loading || !projectId}
+          className="text-xs font-medium text-foreground hover:text-primary truncate max-w-36 border border-transparent hover:border-border rounded px-1.5 py-px transition-colors cursor-text"
+          title="点击重命名项目"
+        >
+          {projectTitle ?? "—"}
+        </button>
+      )}
+
       {/* 状态指示 */}
       <span className="text-xs font-mono px-1.5">
         {headVersion ? (

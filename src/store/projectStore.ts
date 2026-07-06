@@ -75,6 +75,7 @@ interface ProjectState {
   // 持久化 / 版本管理
   loadProject: (id: string) => Promise<void>;
   createProject: (title?: string) => Promise<void>;
+  renameProject: (title: string) => Promise<void>;
   commitDraft: (label?: string) => Promise<void>;
   discardDraft: () => Promise<void>;
   rollbackTo: (versionId: string) => Promise<void>;
@@ -188,6 +189,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         body: JSON.stringify({ title }),
       });
       await get().loadProject(created.project.id);
+    } catch (err) {
+      set({
+        loading: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  },
+
+  renameProject: async (title) => {
+    const { projectId } = get();
+    if (!projectId) return;
+    set({ loading: true, error: null });
+    try {
+      const updated = await api<ProjectDetailResponse>(
+        `/api/projects/${projectId}`,
+        { method: "PATCH", body: JSON.stringify({ title }) }
+      );
+      set({ projectTitle: updated.project.title, loading: false });
     } catch (err) {
       set({
         loading: false,
