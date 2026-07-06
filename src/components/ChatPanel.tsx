@@ -12,6 +12,7 @@
 // ============================================================
 
 import type { ReactNode } from "react";
+import { useState, useEffect } from "react";
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
@@ -120,7 +121,12 @@ function AssistantBubble() {
 // ============================================================
 
 // 空助手气泡的占位：读 runState 显示阶段化提示
-function PhaseEmpty() {
+// assistant-ui 的 ConditionalEmpty 机制：当消息最后一个 part 非 text/reasoning 时
+// 会强制渲染 Empty。用 status prop（assistant-ui 直接传入）判断是否 running。
+function PhaseEmpty({ status }: { status?: { type: string } }) {
+  // 消息已完成 → 不显示任何占位
+  if (status?.type !== "running") return null;
+
   const phase = useAgentStore((s) => s.runState?.phase);
   const currentTool = useAgentStore((s) => s.runState?.currentTool);
 
@@ -141,6 +147,14 @@ function PhaseStatusChip({
 }: {
   runState: ReturnType<typeof useAgentStore.getState>["runState"];
 }) {
+  // 自驱计时：每秒 tick 一次，不依赖 agent_state 广播频率
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!runState) return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [runState?.runId]);
+
   if (!runState) return null;
 
   const elapsedSec = Math.max(
@@ -148,6 +162,8 @@ function PhaseStatusChip({
     Math.round((Date.now() - runState.startedAt) / 1000)
   );
   const chars = runState.streamedText.length;
+  // suppress: tick 用来驱动重渲染，elapsedSec 从 Date.now() 读真实时间
+  void tick;
 
   let label: string;
   if (runState.phase === "thinking") {

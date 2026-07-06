@@ -23,6 +23,11 @@ import {
   listVersions,
 } from "./db/versions.js";
 import { insertMessage, listMessages } from "./db/messages.js";
+import {
+  readLlmConfig,
+  writeLlmConfig,
+  type LlmConfig,
+} from "./llm-config.js";
 
 export const apiRouter = Router();
 
@@ -228,6 +233,39 @@ apiRouter.post("/projects/:id/rollback", (req, res) => {
     res.status(201).json(newHead);
   } catch (err) {
     res.status(404).json({ error: (err as Error).message });
+  }
+});
+
+// ============================================================
+// LLM 配置
+// ============================================================
+
+// GET /api/llm-config
+apiRouter.get("/llm-config", (_req, res) => {
+  try {
+    const config = readLlmConfig();
+    res.json(config);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// PUT /api/llm-config
+apiRouter.put("/llm-config", (req, res) => {
+  try {
+    const { model, apiKey, baseUrl } = (req.body ?? {}) as LlmConfig;
+    if (!model || !model.trim()) {
+      res.status(400).json({ error: "model is required" });
+      return;
+    }
+    writeLlmConfig({
+      model: model.trim(),
+      apiKey: (apiKey ?? "").trim(),
+      baseUrl: (baseUrl ?? "").trim(),
+    });
+    res.json(readLlmConfig());
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
   }
 });
 

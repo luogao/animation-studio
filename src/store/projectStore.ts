@@ -118,11 +118,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   error: null,
 
   applyAgentConfig: (config) =>
-    set((s) => ({
-      draft: s.draft
-        ? { ...s.draft, config }
-        : { id: "__local_pending__", config },
-    })),
+    set((s) => {
+      // 乐观添加到 versions 列表，让版本工具栏立即可见
+      const draftVersion: VersionMeta = {
+        id: s.draft?.id ?? "__local_pending__",
+        projectId: s.projectId ?? "",
+        parentId: s.headVersionId,
+        status: "draft" as const,
+        sequence: (s.versions.length > 0
+          ? Math.max(...s.versions.map((v) => v.sequence))
+          : 0) + 1,
+        label: null,
+        config,
+        createdAt: Date.now(),
+        committedAt: null,
+      };
+      // 如果 versions 里已有 draft（旧 id），替换；否则追加
+      const filtered = s.versions.filter((v) => v.status !== "draft");
+      return {
+        draft: s.draft
+          ? { ...s.draft, config }
+          : { id: "__local_pending__", config },
+        versions: [...filtered, draftVersion],
+      };
+    }),
 
   loadProject: async (id) => {
     set({ loading: true, error: null });

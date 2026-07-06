@@ -43,6 +43,7 @@ import {
   appendRunText,
   getRun,
 } from "./runRegistry.js";
+import { readSettingsFile } from "./llm-config.js";
 import type {
   SceneConfig,
   Actor,
@@ -67,8 +68,37 @@ const PROJECT_ROOT = path.resolve(__dirname, "..");
 const DEFAULT_MODEL = "ark-code-latest";
 
 function resolveModel(): string {
+  // 1. settings 文件里的 ANTHROPIC_MODEL（用户通过 UI 配置）
+  const settings = readSettingsFile();
+  const fromFile = settings?.env?.ANTHROPIC_MODEL?.trim();
+  if (fromFile) return fromFile;
+  // 2. 环境变量 CLAUDE_MODEL（服务端启动时注入）
   const m = process.env.CLAUDE_MODEL?.trim();
-  return m && m.length > 0 ? m : DEFAULT_MODEL;
+  if (m) return m;
+  // 3. 硬编码兜底
+  return DEFAULT_MODEL;
+}
+
+// ------------------------------------------------------------
+// 合并 settings 文件的 env 到子进程环境
+// SDK Options.env 会替换整个子进程环境，所以必须显式把 settings
+// 文件里用户配置的 env 变量合并进来（文件值覆盖进程 env）。
+// ------------------------------------------------------------
+
+function resolveEnv(): Record<string, string | undefined> {
+  const base: Record<string, string | undefined> = {
+    ...process.env,
+    CLAUDE_CONFIG_DIR: SESSIONS_DIR,
+  };
+  const settings = readSettingsFile();
+  if (settings?.env) {
+    for (const [key, value] of Object.entries(settings.env)) {
+      if (value) {
+        base[key] = value;
+      }
+    }
+  }
+  return base;
 }
 
 // ------------------------------------------------------------
@@ -452,7 +482,7 @@ ${JSON.stringify(currentConfig, null, 2)}
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         includePartialMessages: true,
-        env: { ...process.env, CLAUDE_CONFIG_DIR: SESSIONS_DIR },
+        env: resolveEnv(),
         ...sessionOptions,
       },
     });

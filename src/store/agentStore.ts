@@ -142,7 +142,15 @@ export const useAgentStore = create<AgentState>((set) => ({
     set({ chatMessages: [], isStreaming: false, runState: null }),
 
   loadMessages: (msgs) =>
-    set({ chatMessages: msgs, isStreaming: false, runState: null }),
+    set({
+      // 防御：过滤掉既无文本内容也无工具调用的空消息
+      //（PhaseEmpty 兜底已修复，这里是第二层保险，避免 DB 历史残留）
+      chatMessages: msgs.filter(
+        (m) => m.content || (m.toolCalls && m.toolCalls.length > 0)
+      ),
+      isStreaming: false,
+      runState: null,
+    }),
 
   // ── RunState ──
   setRunState: (rs) => set({ runState: rs, isStreaming: deriveStreaming(rs) }),

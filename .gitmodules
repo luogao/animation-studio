@@ -1,0 +1,3 @@
+[submodule "vendor/gsap-skills"]
+	path = vendor/gsap-skills
+	url = https://github.com/greensock/gsap-skills.git

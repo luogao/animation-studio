@@ -92,12 +92,22 @@ export function VersionToolbar() {
   return (
     <div className="flex items-center gap-1.5 shrink-0">
       {/* 状态指示 */}
-      <span className="text-xs text-muted-foreground font-mono px-1.5">
-        {headVersion
-          ? draft
-            ? `v${headVersion.sequence} · 草稿中`
-            : `v${headVersion.sequence}`
-          : "—"}
+      <span className="text-xs font-mono px-1.5">
+        {headVersion ? (
+          draft ? (
+            <span>
+              <span className="text-muted-foreground">v{headVersion.sequence}</span>
+              {" → "}
+              <span className="text-primary font-semibold">
+                v{versions.find((v) => v.id === draft.id)?.sequence ?? "?"} 草稿
+              </span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">v{headVersion.sequence}</span>
+          )
+        ) : (
+          "—"
+        )}
       </span>
 
       <Button
@@ -133,6 +143,14 @@ export function VersionToolbar() {
         <SelectContent>
           {committedVersions.length === 0 && (
             <SelectItem value="">— 无版本 —</SelectItem>
+          )}
+          {/* 草稿入口：显示但不可选（只读提示） */}
+          {draft && (
+            <div className="relative flex items-center px-2 py-1.5 text-xs text-muted-foreground italic border-b border-border mb-1">
+              <span className="font-mono">v{versions.find(v => v.id === draft.id)?.sequence ?? "?"}</span>
+              <span className="ml-2 px-1 py-px rounded bg-primary/20 text-primary text-[10px] font-medium">草稿</span>
+              <span className="ml-auto opacity-50">预览中</span>
+            </div>
           )}
           {committedVersions
             .slice()

@@ -8,6 +8,7 @@ import { CanvasSizeControl } from "./components/CanvasSizeControl";
 import { VersionToolbar } from "./components/VersionToolbar";
 import { ChatPanel } from "./components/ChatPanel";
 import { ProjectSwitcher } from "./components/ProjectSwitcher";
+import { LlmConfigDialog } from "./components/LlmConfigDialog";
 import { buildExportEnvelope, downloadConfig } from "./lib/exportConfig";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
@@ -100,14 +101,12 @@ export default function App() {
         <div className="canvas-toolbar">
           <CanvasSizeControl />
           <VersionToolbar />
-          <Button
-            onClick={handleExport}
-            variant="secondary"
-            size="sm"
-            className="ml-auto"
-          >
-            导出
-          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <LlmConfigDialog />
+            <Button onClick={handleExport} variant="secondary" size="sm">
+              导出
+            </Button>
+          </div>
         </div>
 
         <div className="canvas-stage">

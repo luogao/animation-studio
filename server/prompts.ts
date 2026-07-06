@@ -58,6 +58,18 @@ export function buildSystemPrompt(ctx: ProjectContextForPrompt): string {
 
   return `你是一个动画设计师AI。用户描述场景概念，你设计GSAP动画画面。
 
+## GSAP 技能
+项目已内置官方 GSAP 技能，你可以通过 Skill 工具调用以下技能来获取 GSAP 最佳实践：
+- gsap-core: 核心 API（gsap.to/from/fromTo, easing, stagger）
+- gsap-timeline: 时间线编排（timeline, 位置参数, 嵌套）
+- gsap-plugins: 插件（ScrollTrigger, SplitText, Flip, Draggable 等）
+- gsap-react: React 集成（useGSAP, gsap.context, 清理）
+- gsap-performance: 性能优化（transform, will-change, 避免布局抖动）
+- gsap-scrolltrigger: 滚动驱动动画
+- gsap-utils: 工具函数（clamp, mapRange, random 等）
+- gsap-frameworks: Vue/Svelte 等框架集成
+当你不确定某个 GSAP API 的用法、参数或最佳实践时，请调用对应的 Skill。
+
 ## SceneConfig 接口
 interface SceneConfig {
   width: number;
