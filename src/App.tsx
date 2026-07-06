@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { setCurrentProject } from "./hooks/useWebSocket";
 import { useProjectStore } from "./store/projectStore";
@@ -10,6 +10,7 @@ import { ChatPanel } from "./components/ChatPanel";
 import { ProjectSwitcher } from "./components/ProjectSwitcher";
 import { LlmConfigDialog } from "./components/LlmConfigDialog";
 import { buildExportEnvelope, downloadConfig } from "./lib/exportConfig";
+import { exportVideo, exportGif } from "./lib/exportMedia";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
@@ -89,6 +90,56 @@ export default function App() {
     });
   };
 
+  // ── 导出视频 / GIF ──
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭下拉
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [exportOpen]);
+
+  const doExportMedia = async (
+    format: "video" | "gif",
+    label: string
+  ) => {
+    setExportOpen(false);
+    if (exportBusy) return;
+    const svg = document.querySelector<SVGSVGElement>("svg");
+    if (!svg) {
+      toast.error("找不到画布 SVG 元素");
+      return;
+    }
+
+    const config = useProjectStore.getState().draft?.config
+      ?? useProjectStore.getState().committedConfig;
+
+    setExportBusy(true);
+    toast.info(`开始导出 ${label}...`);
+
+    try {
+      const fn = format === "video" ? exportVideo : exportGif;
+      await fn(svg, config, (phase) => {
+        toast.info(phase, { duration: 2000 });
+      });
+      toast.success(`${label} 导出完成`);
+    } catch (err) {
+      toast.error(
+        `导出失败: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   return (
     <div className="app">
       {/* ── 左：对话面板（顶部含项目切换）── */}
@@ -103,9 +154,38 @@ export default function App() {
           <VersionToolbar />
           <div className="ml-auto flex items-center gap-2">
             <LlmConfigDialog />
-            <Button onClick={handleExport} variant="secondary" size="sm">
-              导出
-            </Button>
+            <div className="relative" ref={exportRef}>
+              <Button
+                onClick={() => setExportOpen((v) => !v)}
+                variant="secondary"
+                size="sm"
+                disabled={exportBusy}
+              >
+                {exportBusy ? "导出中..." : "导出"}
+              </Button>
+              {exportOpen && (
+                <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded-md shadow-lg py-1 min-w-[160px]">
+                  <button
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+                    onClick={() => { setExportOpen(false); handleExport(); }}
+                  >
+                    导出配置 (JSON)
+                  </button>
+                  <button
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+                    onClick={() => doExportMedia("video", "视频 (WebM)")}
+                  >
+                    导出视频 (WebM)
+                  </button>
+                  <button
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+                    onClick={() => doExportMedia("gif", "GIF")}
+                  >
+                    导出 GIF
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
