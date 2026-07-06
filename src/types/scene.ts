@@ -10,7 +10,8 @@ export type PhaseAction =
   | "connect"
   | "pulse"
   | "shake"
-  | "highlight";
+  | "highlight"
+  | "tween";
 export type EffectType =
   | "breathing-glow"
   | "particles"
@@ -29,6 +30,11 @@ export interface Actor {
   glow?: string; // 发光色
   fontSize?: number;
   fontWeight?: number;
+  // === 初始变换属性 ===
+  rotation?: number; // 初始旋转角度（degrees）
+  scale?: number; // 初始缩放比例（默认 1）
+  skewX?: number; // X 轴倾斜（degrees）
+  skewY?: number; // Y 轴倾斜（degrees）
 }
 
 export interface Connection {
@@ -38,6 +44,13 @@ export interface Connection {
   color?: string;
 }
 
+export interface StaggerConfig {
+  each?: number;
+  from?: number | "start" | "center" | "end" | "edges" | "random";
+  ease?: string;
+  amount?: number;
+}
+
 export interface Phase {
   at: number; // 开始时间（秒）
   duration: number;
@@ -45,6 +58,16 @@ export interface Phase {
   target: string | string[]; // actor id 或 ids
   effect?: string; // "slide-left" | "scale-pop" | "fade" | "slide-up" | "draw-line"
   ease?: string; // GSAP ease 字符串
+
+  // === 通用动画属性（action="tween" 时生效） ===
+  /** GSAP TweenVars，透传给 gsap.to/from/fromTo。可包含任意 GSAP 属性 */
+  props?: Record<string, unknown>;
+  /** fromTo 模式的起始状态（tweenMode="fromTo" 时使用） */
+  fromProps?: Record<string, unknown>;
+  /** 多目标 stagger：数字=间隔秒数，对象=GSAP stagger 配置 */
+  stagger?: number | StaggerConfig;
+  /** GSAP 方法：to（默认，当前→目标）、from（props→当前）、fromTo（fromProps→props） */
+  tweenMode?: "to" | "from" | "fromTo";
 }
 
 export interface Effect {

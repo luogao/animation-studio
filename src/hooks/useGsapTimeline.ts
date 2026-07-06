@@ -109,50 +109,109 @@ export function useGsapTimeline(
 
 function applyPhase(tl: gsap.core.Timeline, phase: Phase) {
   const targets = Array.isArray(phase.target) ? phase.target : [phase.target];
-  const dur = phase.duration;
-  const ease = phase.ease;
 
+  // stagger 模式：多目标时拼接复合选择器，一次 GSAP 调用带 stagger
+  const useStagger = targets.length > 1 && phase.stagger !== undefined;
+
+  if (useStagger && phase.action !== "connect") {
+    const compoundSelector = targets
+      .map((id) => `[data-actor-id="${id}"]`)
+      .join(",");
+    applyOne(tl, compoundSelector, null, phase, true);
+    return;
+  }
+
+  // 非 stagger 模式：逐目标循环
   for (const targetId of targets) {
     const actorSelector = `[data-actor-id="${targetId}"]`;
+    applyOne(tl, actorSelector, targetId, phase, false);
+  }
+}
 
-    switch (phase.action) {
-      case "enter": {
-        const vars = getEnterEffect(phase.effect, dur, ease);
-        tl.from(actorSelector, vars, phase.at);
-        break;
-      }
+// ------------------------------------------------------------
+// 对单个选择器执行一个 phase 的 tween
+// ------------------------------------------------------------
 
-      case "exit": {
-        const vars = getExitEffect(dur, ease);
-        tl.to(actorSelector, vars, phase.at);
-        break;
-      }
+function applyOne(
+  tl: gsap.core.Timeline,
+  selector: string,
+  targetId: string | null,
+  phase: Phase,
+  withStagger: boolean
+) {
+  const dur = phase.duration;
+  const ease = phase.ease;
+  const extra: Record<string, unknown> = {};
+  if (withStagger && phase.stagger !== undefined) {
+    extra.stagger = phase.stagger;
+  }
 
-      case "pulse": {
-        tl.to(actorSelector, getPulseEffect(dur, ease), phase.at);
-        break;
-      }
-
-      case "shake": {
-        tl.to(actorSelector, getShakeEffect(dur), phase.at);
-        break;
-      }
-
-      case "highlight": {
-        tl.to(actorSelector, getHighlightEffect(dur), phase.at);
-        break;
-      }
-
-      case "connect": {
-        // 给所有指向 target 的连接线做 draw-line
-        const connSelector = `[data-conn-to="${targetId}"]`;
-        const tween = getDrawLineTween(dur, ease);
-        tl.fromTo(connSelector, tween.from, tween.to, phase.at);
-        break;
-      }
-
-      default:
-        break;
+  switch (phase.action) {
+    case "enter": {
+      const vars = getEnterEffect(phase.effect, dur, ease);
+      Object.assign(vars, extra);
+      tl.from(selector, vars, phase.at);
+      break;
     }
+
+    case "exit": {
+      const vars = getExitEffect(dur, ease);
+      Object.assign(vars, extra);
+      tl.to(selector, vars, phase.at);
+      break;
+    }
+
+    case "pulse": {
+      const vars = getPulseEffect(dur, ease);
+      Object.assign(vars, extra);
+      tl.to(selector, vars, phase.at);
+      break;
+    }
+
+    case "shake": {
+      const vars = getShakeEffect(dur);
+      Object.assign(vars, extra);
+      tl.to(selector, vars, phase.at);
+      break;
+    }
+
+    case "highlight": {
+      const vars = getHighlightEffect(dur);
+      Object.assign(vars, extra);
+      tl.to(selector, vars, phase.at);
+      break;
+    }
+
+    case "connect": {
+      // 给所有指向 target 的连接线做 draw-line
+      const connSelector = `[data-conn-to="${targetId}"]`;
+      const tween = getDrawLineTween(dur, ease);
+      tl.fromTo(connSelector, tween.from, tween.to, phase.at);
+      break;
+    }
+
+    case "tween": {
+      const props = (phase.props ?? {}) as Record<string, unknown>;
+      const tweenMode = phase.tweenMode ?? "to";
+      const vars = { ...props, duration: dur, ease, ...extra };
+
+      if (tweenMode === "from") {
+        tl.from(selector, vars, phase.at);
+      } else if (tweenMode === "fromTo") {
+        const fromVars = {
+          ...((phase.fromProps ?? {}) as Record<string, unknown>),
+          duration: dur,
+          ease,
+          ...extra,
+        };
+        tl.fromTo(selector, fromVars, vars, phase.at);
+      } else {
+        tl.to(selector, vars, phase.at);
+      }
+      break;
+    }
+
+    default:
+      break;
   }
 }

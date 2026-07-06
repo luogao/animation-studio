@@ -127,6 +127,10 @@ const actorShape = {
   glow: z.string().optional().describe("发光色，drop-shadow 用"),
   fontSize: z.number().optional(),
   fontWeight: z.number().optional(),
+  rotation: z.number().optional().describe("初始旋转角度（degrees）"),
+  scale: z.number().optional().describe("初始缩放比例（默认 1）"),
+  skewX: z.number().optional().describe("X 轴倾斜（degrees）"),
+  skewY: z.number().optional().describe("Y 轴倾斜（degrees）"),
 };
 
 const connectionShape = {
@@ -139,7 +143,15 @@ const connectionShape = {
 const phaseShape = {
   at: z.number().describe("开始时间（秒）"),
   duration: z.number(),
-  action: z.enum(["enter", "exit", "connect", "pulse", "shake", "highlight"]),
+  action: z.enum([
+    "enter",
+    "exit",
+    "connect",
+    "pulse",
+    "shake",
+    "highlight",
+    "tween",
+  ]),
   target: z
     .union([z.string(), z.array(z.string())])
     .describe("actor id 或 ids 数组"),
@@ -150,6 +162,45 @@ const phaseShape = {
       "slide-left | slide-right | slide-up | scale-pop | fade | draw-line"
     ),
   ease: z.string().optional().describe("GSAP ease 字符串，如 power3.out"),
+
+  // === 通用动画属性（action="tween" 时生效） ===
+  props: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "GSAP TweenVars，透传给 gsap.to/from/fromTo。可包含任意 GSAP 属性如 rotation, scale, x, y, opacity, filter 等。仅 action=tween 时生效"
+    ),
+  fromProps: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "fromTo 模式的起始状态（tweenMode=fromTo 时使用）。仅 action=tween 时生效"
+    ),
+  stagger: z
+    .union([
+      z.number(),
+      z.object({
+        each: z.number().optional(),
+        from: z
+          .union([
+            z.number(),
+            z.enum(["start", "center", "end", "edges", "random"]),
+          ])
+          .optional(),
+        ease: z.string().optional(),
+        amount: z.number().optional(),
+      }),
+    ])
+    .optional()
+    .describe(
+      "多目标 stagger：数字=间隔秒数，对象=GSAP stagger 配置。当 target 为数组时生效"
+    ),
+  tweenMode: z
+    .enum(["to", "from", "fromTo"])
+    .optional()
+    .describe(
+      "GSAP 方法：to（默认，当前状态→props）、from（props→当前状态）、fromTo（fromProps→props）。仅 action=tween 时生效"
+    ),
 };
 
 const effectShape = {

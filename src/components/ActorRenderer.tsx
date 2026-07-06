@@ -17,6 +17,35 @@ const DEFAULT_CIRCLE_D = 60;
 const DEFAULT_GATE_W = 30;
 const DEFAULT_GATE_H = 80;
 
+// ------------------------------------------------------------
+// 变换字符串拼装
+// ------------------------------------------------------------
+
+function buildTransform(actor: Actor): string {
+  const parts: string[] = [];
+  parts.push(`translate(${actor.x}, ${actor.y})`);
+
+  // 旋转/缩放以 actor 自身中心为原点
+  const w = actor.width;
+  const h = actor.height;
+  const cx = w != null ? w / 2 : DEFAULT_BOX_W / 2;
+  const cy = h != null ? h / 2 : DEFAULT_BOX_H / 2;
+
+  if (actor.rotation != null) {
+    parts.push(`rotate(${actor.rotation}, ${cx}, ${cy})`);
+  }
+  if (actor.scale != null && actor.scale !== 1) {
+    parts.push(`scale(${actor.scale}, ${cx}, ${cy})`);
+  }
+  if (actor.skewX != null) {
+    parts.push(`skewX(${actor.skewX})`);
+  }
+  if (actor.skewY != null) {
+    parts.push(`skewY(${actor.skewY})`);
+  }
+  return parts.join(" ");
+}
+
 interface Props {
   actor: Actor;
 }
@@ -26,8 +55,6 @@ export function ActorRenderer({ actor }: Props) {
     id,
     type,
     label,
-    x,
-    y,
     width,
     height,
     color = "#e8a230",
@@ -37,8 +64,8 @@ export function ActorRenderer({ actor }: Props) {
   } = actor;
 
   return (
-    <g transform={`translate(${x}, ${y})`}>
-      <g data-actor-id={id} style={glowStyle(glow)}>
+    <g transform={buildTransform(actor)}>
+      <g data-actor-id={id} data-actor-type={type} style={glowStyle(glow)}>
         {renderShape(type, {
           width: width ?? DEFAULT_BOX_W,
           height: height ?? DEFAULT_BOX_H,
@@ -85,6 +112,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
             fillOpacity={0.15}
             stroke={p.color}
             strokeWidth={1.5}
+            data-actor-part="shape"
           />
           {p.label && (
             <text
@@ -96,6 +124,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
               fontSize={p.fontSize}
               fontWeight={p.fontWeight}
               fontFamily="var(--font-sans)"
+              data-actor-part="label"
             >
               {p.label}
             </text>
@@ -115,6 +144,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
             fillOpacity={0.15}
             stroke={p.color}
             strokeWidth={1.5}
+            data-actor-part="shape"
           />
           {p.label && (
             <text
@@ -126,6 +156,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
               fontSize={p.fontSize}
               fontWeight={p.fontWeight}
               fontFamily="var(--font-sans)"
+              data-actor-part="label"
             >
               {p.label}
             </text>
@@ -151,7 +182,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
       ));
       return (
         <>
-          {lines}
+          <g data-actor-part="shape">{lines}</g>
           {p.label && (
             <text
               x={p.gateW / 2}
@@ -162,6 +193,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
               fontSize={p.fontSize}
               fontWeight={p.fontWeight}
               fontFamily="var(--font-sans)"
+              data-actor-part="label"
             >
               {p.label}
             </text>
@@ -181,6 +213,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
           fontSize={p.fontSize}
           fontWeight={p.fontWeight}
           fontFamily="var(--font-sans)"
+          data-actor-part="text"
         >
           {p.label ?? ""}
         </text>
@@ -195,6 +228,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
             fillOpacity={0.15}
             stroke={p.color}
             strokeWidth={1.5}
+            data-actor-part="shape"
           />
           {p.label && (
             <text
@@ -206,6 +240,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
               fontSize={p.fontSize}
               fontWeight={p.fontWeight}
               fontFamily="var(--font-sans)"
+              data-actor-part="label"
             >
               {p.label}
             </text>

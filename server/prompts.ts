@@ -70,6 +70,9 @@ export function buildSystemPrompt(ctx: ProjectContextForPrompt): string {
 - gsap-frameworks: Vue/Svelte 等框架集成
 当你不确定某个 GSAP API 的用法、参数或最佳实践时，请调用对应的 Skill。
 
+## 动画设计原则
+项目已内置迪士尼 12 法则技能（disney-12-principles），涵盖挤压拉伸、预备动作、演出布局、跟随重叠、缓入缓出、弧线运动、次要动作、节奏、夸张、立体感、吸引力等设计原则。设计动画时应主动应用这些原则，让画面更加自然生动。
+
 ## SceneConfig 接口
 interface SceneConfig {
   width: number;
@@ -90,6 +93,10 @@ interface Actor {
   width?: number; height?: number;
   color?: string; glow?: string;
   fontSize?: number; fontWeight?: number;
+  rotation?: number;  // 初始旋转角度（degrees）
+  scale?: number;     // 初始缩放比例（默认 1）
+  skewX?: number;     // X 轴倾斜（degrees）
+  skewY?: number;     // Y 轴倾斜（degrees）
 }
 
 interface Connection {
@@ -100,10 +107,14 @@ interface Connection {
 
 interface Phase {
   at: number; duration: number;
-  action: "enter" | "exit" | "connect" | "pulse" | "shake" | "highlight";
+  action: "enter" | "exit" | "connect" | "pulse" | "shake" | "highlight" | "tween";
   target: string | string[];
   effect?: string;
   ease?: string;
+  props?: Record<string, any>;     // GSAP TweenVars（仅 action="tween"）
+  fromProps?: Record<string, any>; // fromTo 起始状态（仅 action="tween"）
+  stagger?: number | { each?: number; from?: number | string; amount?: number; ease?: string };
+  tweenMode?: "to" | "from" | "fromTo";  // 默认 "to"
 }
 
 interface Effect {
@@ -119,16 +130,52 @@ interface Effect {
 - text: 纯文字标签
 - diamond: 菱形（决策点）
 
-### Effect（入场效果）
+### 内置 Effect（入场效果，用于 action=enter）
 - slide-left: 从左滑入
 - slide-right: 从右滑入
 - slide-up: 从下滑入
 - scale-pop: 从0弹出，ease back.out
 - fade: 淡入
 - draw-line: 连线绘制动画
+
+### 内置 Action
+- enter: 入场（配合 effect 使用内置效果）
+- exit: 出场（淡出+缩小）
 - pulse: 脉冲缩放
 - shake: 抖动
 - highlight: 高亮闪烁
+- connect: 连线绘制
+- tween: **通用动画**（见下方）
+
+### Tween 通用动画（action="tween"）
+使用 props 透传任意 GSAP 属性，实现内置效果无法表达的动画：
+
+- **props**: GSAP TweenVars 对象，可包含任意属性：
+  - 位置: x, y
+  - 变换: rotation, scale, scaleX, scaleY, skewX, skewY
+  - 透明度: opacity, autoAlpha
+  - 颜色: fill, stroke, color, backgroundColor
+  - 滤镜: filter（如 "brightness(1.5)"、"blur(3px)"）
+  - SVG: strokeDashoffset, strokeWidth
+  - 其他: transformOrigin, svgOrigin
+- **tweenMode** 控制方向：
+  - "to"（默认）: 从当前状态过渡到 props
+  - "from": 从 props 状态过渡到当前（等同于 enter 的语义）
+  - "fromTo": 从 fromProps 过渡到 props（两个关键帧）
+- **stagger**: 当 target 为数组时，依次错峰执行（数字=间隔秒数，或 { each, from, amount }）
+- **ease**: GSAP ease 字符串（如 "power3.out", "back.out(1.7)", "none", "elastic.out(1,0.3)"）
+
+示例：
+1. 旋转一圈: { action:"tween", target:"logo", props:{ rotation:360 }, duration:1 }
+2. 弹入: { action:"tween", tweenMode:"from", target:"title", props:{ scale:0, opacity:0 }, ease:"back.out(1.7)" }
+3. 依次入场: { action:"tween", target:["a","b","c"], stagger:0.2, tweenMode:"from", props:{ y:50, opacity:0 } }
+4. 翻转: { action:"tween", tweenMode:"fromTo", target:"card", fromProps:{ rotation:0 }, props:{ rotation:180 }, transformOrigin:"center center" }
+
+### 选择器技巧
+- 单个 actor: target: "actorId"
+- 多个 actor: target: ["id1", "id2", "id3"]
+- 配合 stagger 可实现列表依次动画、波浪效果等
+- GSAP 通过 [data-actor-id="..."] 定位元素，actor type 也暴露为 [data-actor-type="box"] 可用于批量操作
 
 ## 设计风格
 - 背景: #0a0a0b
