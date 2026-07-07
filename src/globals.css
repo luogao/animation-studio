@@ -531,3 +531,35 @@
 .tool-card-result[data-error] {
   color: #ff5e5e;
 }
+
+/* ============================================================
+ * Actor Selection & Edit Mode
+ * ============================================================ */
+
+/* 编辑模式外：hover 时轻微提升亮度，暗示可点击 */
+svg:not([data-edit-mode="true"]) .actor-group:hover > g[data-actor-id] {
+  filter: brightness(1.2);
+  transition: filter 0.15s ease;
+}
+
+/* 编辑模式内：pointer cursor */
+svg[data-edit-mode="true"] .actor-group {
+  cursor: pointer;
+}
+
+/* 选中指示器虚线滚动动画 */
+.actor-group .selection-indicator {
+  animation: dash-march 2s linear infinite;
+}
+
+@keyframes dash-march {
+  to {
+    stroke-dashoffset: -18; /* 6+3=9, ×2 保证平滑循环 */
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .actor-group .selection-indicator {
+    animation: none;
+  }
+}

@@ -12,6 +12,7 @@ import { useMemo } from "react";
 import type { SceneConfig } from "../types/scene";
 import { ActorRenderer } from "./ActorRenderer";
 import { ConnectionRenderer } from "./ConnectionRenderer";
+import { useSelectionStore } from "../store/selectionStore";
 
 interface Props {
   config: SceneConfig;
@@ -25,11 +26,24 @@ export function DynamicScene({ config }: Props) {
     [config.actors]
   );
 
+  const isEditMode = useSelectionStore((s) => s.isEditMode);
+  const deselectAll = useSelectionStore((s) => s.deselectAll);
+
+  const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!isEditMode) return;
+    // 只有直接点击 SVG 背景（非子元素）时才清空选中
+    if (e.target === e.currentTarget) {
+      deselectAll();
+    }
+  };
+
   return (
     <svg
       width={config.width}
       height={config.height}
       viewBox={`0 0 ${config.width} ${config.height}`}
+      data-edit-mode={isEditMode ? "true" : "false"}
+      onClick={handleSvgClick}
       style={{
         background: config.background,
         display: "block",
@@ -73,6 +87,9 @@ export function DynamicScene({ config }: Props) {
           <ActorRenderer key={a.id} actor={a} />
         ))}
       </g>
+
+      {/* ── 选取层（data-edit-only，导出时剔除）── */}
+      <g className="selection-layer" data-edit-only="true" />
     </svg>
   );
 }

@@ -22,7 +22,9 @@ import type {
   ThreadMessageLike,
 } from "@assistant-ui/react";
 import { useAgentStore, type ChatItem } from "../store/agentStore";
-import { useProjectStore } from "../store/projectStore";
+import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
+import { useSelectionStore } from "../store/selectionStore";
+import { formatSelectionContext } from "./selectionHelpers";
 import { sendMessage } from "../hooks/useWebSocket";
 import { buildExportEnvelope, downloadConfig } from "./exportConfig";
 import { toast } from "sonner";
@@ -146,8 +148,21 @@ export function useStudioRuntime() {
         return;
       }
 
-      // ── 普通对话：sendMessage 内部处理 auto-commit + REST + WS ──
-      await sendMessage(text);
+      // ── 普通对话：注入选中元素上下文后发送 ──
+      let augmentedText = text;
+      const sel = useSelectionStore.getState();
+      if (sel.isEditMode && sel.selectedActorIds.size > 0) {
+        const projectStore = useProjectStore.getState();
+        const currentConfig = selectPreviewConfig(projectStore);
+        const selectedActors = currentConfig.actors.filter((a) =>
+          sel.selectedActorIds.has(a.id)
+        );
+        const ctx = formatSelectionContext(selectedActors);
+        if (ctx) {
+          augmentedText = ctx + "\n\n" + text;
+        }
+      }
+      await sendMessage(augmentedText);
     },
   };
 

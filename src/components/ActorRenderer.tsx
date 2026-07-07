@@ -9,6 +9,8 @@
 // ============================================================
 
 import type { Actor } from "../types/scene";
+import { useSelectionStore } from "../store/selectionStore";
+import { getActorBounds } from "../lib/selectionHelpers";
 
 // 默认尺寸（当 actor 未指定 width/height 时使用）
 const DEFAULT_BOX_W = 120;
@@ -63,8 +65,40 @@ export function ActorRenderer({ actor }: Props) {
     fontWeight = 500,
   } = actor;
 
+  // ── 选取状态 ──
+  const isEditMode = useSelectionStore((s) => s.isEditMode);
+  const isSelected = useSelectionStore((s) => s.selectedActorIds.has(id));
+  const toggleActor = useSelectionStore((s) => s.toggleActor);
+
+  const bounds = getActorBounds(actor);
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (!isEditMode) return;
+    e.stopPropagation(); // 阻止冒泡到 SVG 背景（避免误触发 deselectAll）
+    toggleActor(id);
+  };
+
   return (
-    <g transform={buildTransform(actor)}>
+    <g
+      className="actor-group"
+      transform={buildTransform(actor)}
+      onClick={handleClick}
+      style={{ cursor: isEditMode ? "pointer" : undefined }}
+    >
+      {/* ── 编辑模式：不可见的点击热区 ── */}
+      {isEditMode && (
+        <rect
+          x={0}
+          y={0}
+          width={bounds.w}
+          height={bounds.h}
+          fill="transparent"
+          pointerEvents="all"
+          data-edit-only="true"
+        />
+      )}
+
+      {/* ── GSAP 目标层（不要放 data-edit-only 元素在这里）── */}
       <g data-actor-id={id} data-actor-type={type} style={glowStyle(glow)}>
         {renderShape(type, {
           width: width ?? DEFAULT_BOX_W,
@@ -78,6 +112,23 @@ export function ActorRenderer({ actor }: Props) {
           fontWeight,
         })}
       </g>
+
+      {/* ── 编辑模式：选中指示器（在 GSAP 目标层之外，不受动画影响）── */}
+      {isEditMode && isSelected && (
+        <rect
+          className="selection-indicator"
+          x={-4}
+          y={-4}
+          width={bounds.w + 8}
+          height={bounds.h + 8}
+          fill="none"
+          stroke="#E8A230"
+          strokeWidth={2}
+          strokeDasharray="6 3"
+          rx={4}
+          data-edit-only="true"
+        />
+      )}
     </g>
   );
 }

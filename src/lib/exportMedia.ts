@@ -20,12 +20,17 @@ function svgToCanvas(
   width: number,
   height: number
 ): Promise<ImageData> {
+  // 克隆 SVG 并移除编辑模式专属元素（选取框、点击热区等），
+  // 避免导出文件中出现 data-edit-only 标记的 UI 叠加层。
+  const clone = svgEl.cloneNode(true) as SVGSVGElement;
+  clone.querySelectorAll('[data-edit-only="true"]').forEach((el) => el.remove());
+
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d")!;
 
-  const svgData = new XMLSerializer().serializeToString(svgEl);
+  const svgData = new XMLSerializer().serializeToString(clone);
   const blob = new Blob([svgData], { type: "image/svg+xml" });
   const url = URL.createObjectURL(blob);
 

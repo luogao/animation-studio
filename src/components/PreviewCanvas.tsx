@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
 import { useGsapTimeline } from "../hooks/useGsapTimeline";
+import { useSelectionStore } from "../store/selectionStore";
 import { DynamicScene } from "./DynamicScene";
 
 export function PreviewCanvas() {
@@ -21,6 +22,15 @@ export function PreviewCanvas() {
 
   // 构建并注册 timeline（容器 = stageRef，让 selector 限定在画布内）
   useGsapTimeline(config, stageRef);
+
+  // ── config 变化时清空选中 ──
+  // agent 修改场景后旧的 actor id 可能已失效
+  const clearSelection = useSelectionStore((s) => s.clearSelection);
+  useEffect(() => {
+    clearSelection();
+    // config 引用变化即触发（selectPreviewConfig 在 draft/committedConfig 变化时返回新引用）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]);
 
   // ── 计算 scale 让画布等比适配 container ──
   const [scale, setScale] = useState(1);

@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownText } from "./MarkdownText";
 import { ToolCallCard } from "./ToolCallCard";
+import { SelectionTags } from "./SelectionTags";
 
 export function ChatPanel({ children }: { children?: ReactNode }) {
   const runtime = useStudioRuntime();
@@ -59,6 +60,9 @@ export function ChatPanel({ children }: { children?: ReactNode }) {
 
           {/* ── 状态条：流式时显示当前 phase（thinking / streaming / tool）── */}
           <PhaseStatusChip runState={runState} />
+
+          {/* ── 选中元素标签栏（编辑模式下显示在输入框上方）── */}
+          <SelectionTags />
 
           {/* ── 底部输入区 ── */}
           <ComposerPrimitive.Root className="flex gap-2 p-3 border-t-2 border-foreground shrink-0">

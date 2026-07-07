@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { setCurrentProject } from "./hooks/useWebSocket";
 import { useProjectStore } from "./store/projectStore";
+import { useSelectionStore } from "./store/selectionStore";
 import { PreviewCanvas } from "./components/PreviewCanvas";
 import { Timeline } from "./components/Timeline";
 import { CanvasSizeControl } from "./components/CanvasSizeControl";
@@ -24,6 +25,21 @@ import { toast } from "sonner";
 function parseProjectIdFromUrl(): string | null {
   const m = window.location.pathname.match(/^\/p\/([\w-]+)/);
   return m ? m[1] : null;
+}
+
+// ── 编辑模式切换按钮 ──
+function EditModeToggle() {
+  const isEditMode = useSelectionStore((s) => s.isEditMode);
+  const toggleEditMode = useSelectionStore((s) => s.toggleEditMode);
+  return (
+    <Button
+      onClick={toggleEditMode}
+      variant={isEditMode ? "default" : "secondary"}
+      size="sm"
+    >
+      {isEditMode ? "编辑中" : "选择"}
+    </Button>
+  );
 }
 
 export default function App() {
@@ -153,6 +169,7 @@ export default function App() {
           <CanvasSizeControl />
           <VersionToolbar />
           <div className="ml-auto flex items-center gap-2">
+            <EditModeToggle />
             <LlmConfigDialog />
             <div className="relative" ref={exportRef}>
               <Button
