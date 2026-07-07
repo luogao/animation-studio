@@ -6,6 +6,7 @@
 // ============================================================
 
 import { X } from "lucide-react";
+import { FALLBACK_ACTOR_COLOR } from "../lib/colorPalette";
 import { useSelectionStore } from "../store/selectionStore";
 import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
 
@@ -32,7 +33,7 @@ export function SelectionTags() {
           {/* 颜色圆点 */}
           <span
             className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-            style={{ backgroundColor: a.color ?? "#e8a230" }}
+            style={{ backgroundColor: a.color ?? FALLBACK_ACTOR_COLOR }}
           />
           {/* 优先显示 label，否则显示 id */}
           <span className="max-w-[120px] truncate">{a.label ?? a.id}</span>

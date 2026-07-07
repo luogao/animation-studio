@@ -12,6 +12,7 @@
 import { useState } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import type { SceneConfig } from "../types/scene";
+import { PaletteProposalPicker } from "./PaletteProposalPicker";
 
 export const ToolCallCard: ToolCallMessagePartComponent = ({
   toolName,
@@ -23,13 +24,15 @@ export const ToolCallCard: ToolCallMessagePartComponent = ({
 }) => {
   const [expanded, setExpanded] = useState(false);
   const running = status?.type === "running";
-  const summary = summarizeTool(toolName, args);
+  // MCP 工具名带 mcp__<server>__ 前缀，归一化为短名再匹配
+  const shortName = shortToolName(toolName);
+  const summary = summarizeTool(shortName, args);
   const argsDisplay = argsText ?? (args ? JSON.stringify(args, null, 2) : "");
 
   return (
     <div
       className="tool-card"
-      data-tool={toolName}
+      data-tool={shortName}
       data-status={running ? "running" : isError ? "error" : "complete"}
     >
       <button
@@ -47,12 +50,16 @@ export const ToolCallCard: ToolCallMessagePartComponent = ({
             "✓"
           )}
         </span>
-        <span className="tool-card-name">{toolName}</span>
+        <span className="tool-card-name">{shortName}</span>
         {summary && <span className="tool-card-summary">{summary}</span>}
         <span className="tool-card-toggle" aria-hidden="true">
           {expanded ? "▾" : "▸"}
         </span>
       </button>
+
+      {!running && !isError && shortName === "generate_color_palettes" && (
+        <PaletteProposalPicker result={result} />
+      )}
 
       {expanded && argsDisplay && (
         <pre className="tool-card-body">{argsDisplay}</pre>
@@ -66,6 +73,11 @@ export const ToolCallCard: ToolCallMessagePartComponent = ({
     </div>
   );
 };
+
+// MCP 工具名形如 mcp__studio__generate_color_palettes，去掉服务器前缀再匹配
+function shortToolName(name: string): string {
+  return name.replace(/^mcp__[a-zA-Z0-9_]+__/, "");
+}
 
 // ── 已知工具的友好摘要 ──
 // 未知工具（含未来启用的内置工具 Read/Write/Bash 等）走 fallback，
@@ -84,6 +96,10 @@ function summarizeTool(name: string, args: unknown): string | null {
     }
     case "get_version_history":
       return "查询版本历史";
+    case "generate_color_palettes": {
+      const a = args as { seedColor?: string };
+      return `生成配色 · 主色 ${a.seedColor ?? ""}`;
+    }
     case "rollback_to_version": {
       const a = args as { targetVersionId?: string };
       const id = a.targetVersionId ?? "";

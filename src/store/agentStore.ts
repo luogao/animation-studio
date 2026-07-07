@@ -16,6 +16,7 @@
 // ============================================================
 
 import { create } from "zustand";
+import type { Palette } from "../types/scene";
 
 // ============================================================
 // 消息类型（对话面板用）
@@ -72,6 +73,10 @@ interface AgentState {
   // null = idle（没 agent 在跑）；非 null = 当前 run 的状态
   runState: RunState | null;
 
+  // 当前活跃的配色提案（最近一次 generate_color_palettes 的结果）。
+  // null = 无活跃提案。供前端色卡 + 对话颜色联动用（ephemeral，不持久化）。
+  activeProposals: Palette[] | null;
+
   // ── actions ──
   addMessage: (msg: ChatItem) => void;
   appendDelta: (delta: string) => void;
@@ -95,6 +100,10 @@ interface AgentState {
     result: { content: string; isError: boolean }
   ) => void;
   finalizeRunningToolCalls: () => void;
+
+  // ── 配色提案 ──
+  setActiveProposals: (p: Palette[] | null) => void;
+  clearActiveProposals: () => void;
 }
 
 // ============================================================
@@ -114,6 +123,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   chatMessages: [],
   isStreaming: false,
   runState: null,
+  activeProposals: null,
 
   addMessage: (msg) => set((s) => ({ chatMessages: [...s.chatMessages, msg] })),
 
@@ -135,11 +145,17 @@ export const useAgentStore = create<AgentState>((set) => ({
 
   setStreaming: (isStreaming) => set({ isStreaming }),
 
-  clearChat: () => set({ chatMessages: [], isStreaming: false, runState: null }),
+  clearChat: () =>
+    set({ chatMessages: [], isStreaming: false, runState: null, activeProposals: null }),
 
   // M3 切换项目时调用：先清空 + 把 REST 拉来的消息灌进来
   clearForProject: (_id) =>
-    set({ chatMessages: [], isStreaming: false, runState: null }),
+    set({
+      chatMessages: [],
+      isStreaming: false,
+      runState: null,
+      activeProposals: null,
+    }),
 
   loadMessages: (msgs) =>
     set({
@@ -150,6 +166,9 @@ export const useAgentStore = create<AgentState>((set) => ({
       ),
       isStreaming: false,
       runState: null,
+      // 注意：不清空 activeProposals。done 时 reloadAfterDone 也走 loadMessages，
+      // 若清空会让刚生成的提案在 agent 完成后立即丢失，对话颜色联动就失效。
+      // reload（页面刷新）由 store 重建重置；切项目由 clearForProject 负责。
     }),
 
   // ── RunState ──
@@ -253,4 +272,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       if (!touched) return s;
       return { chatMessages: updatedMessages };
     }),
+
+  setActiveProposals: (activeProposals) => set({ activeProposals }),
+  clearActiveProposals: () => set({ activeProposals: null }),
 }));

@@ -11,6 +11,7 @@
 // ============================================================
 
 import type { Actor, Connection } from "../types/scene";
+import { FALLBACK_CONNECTION_COLOR } from "../lib/colorPalette";
 
 interface Props {
   connection: Connection;
@@ -25,7 +26,7 @@ export function ConnectionRenderer({
   to,
   markerId,
 }: Props) {
-  const { style, color = "#5a5a62" } = connection;
+  const { style, color = FALLBACK_CONNECTION_COLOR } = connection;
 
   // 端点取 actor 边界框中心
   const fw = from.width ?? from.type === "circle" ? 60 : 120;

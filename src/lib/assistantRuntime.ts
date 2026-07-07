@@ -25,6 +25,7 @@ import { useAgentStore, type ChatItem } from "../store/agentStore";
 import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
 import { useSelectionStore } from "../store/selectionStore";
 import { formatSelectionContext } from "./selectionHelpers";
+import { matchPaletteIntent } from "./colorPalette";
 import { sendMessage } from "../hooks/useWebSocket";
 import { buildExportEnvelope, downloadConfig } from "./exportConfig";
 import { toast } from "sonner";
@@ -146,6 +147,21 @@ export function useStudioRuntime() {
       if (text === "/export") {
         handleExportCommand();
         return;
+      }
+
+      // ── 配色提案自动应用：用户说方案号/hex → 直接应用对应色卡（跳过手动确认）──
+      // matchPaletteIntent 保守 anchored 匹配，"第二个颜色再深一点"等不会误触发
+      const proposals = useAgentStore.getState().activeProposals;
+      if (proposals && proposals.length > 0) {
+        const m = matchPaletteIntent(text, proposals);
+        if (m) {
+          const p = proposals[m.index];
+          useAgentStore.getState().clearActiveProposals();
+          await sendMessage(
+            `使用配色方案 ${p.id}（${p.harmony}）为当前场景重新上色`
+          );
+          return;
+        }
       }
 
       // ── 普通对话：注入选中元素上下文后发送 ──

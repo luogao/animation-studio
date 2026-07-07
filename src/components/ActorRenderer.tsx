@@ -9,6 +9,7 @@
 // ============================================================
 
 import type { Actor } from "../types/scene";
+import { FALLBACK_ACTOR_COLOR } from "../lib/colorPalette";
 import { useSelectionStore } from "../store/selectionStore";
 import { getActorBounds } from "../lib/selectionHelpers";
 
@@ -59,7 +60,7 @@ export function ActorRenderer({ actor }: Props) {
     label,
     width,
     height,
-    color = "#e8a230",
+    color = FALLBACK_ACTOR_COLOR,
     glow,
     fontSize = 14,
     fontWeight = 500,
@@ -122,7 +123,7 @@ export function ActorRenderer({ actor }: Props) {
           width={bounds.w + 8}
           height={bounds.h + 8}
           fill="none"
-          stroke="#E8A230"
+          stroke={FALLBACK_ACTOR_COLOR}
           strokeWidth={2}
           strokeDasharray="6 3"
           rx={4}

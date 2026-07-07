@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
-import { useAgentStore, type RunState } from "../store/agentStore";
+import { useAgentStore, type RunState, type ChatItem } from "../store/agentStore";
 import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
 import type { SceneConfig } from "../types/scene";
+import { parsePalettes } from "../lib/colorPalette";
 
 // ============================================================
 // 消息协议（与 server/wsHandler.ts 对应）
@@ -136,6 +137,18 @@ export function useWebSocket(): void {
 // 消息 dispatch — 分发到 agent / project 两个 store
 // ============================================================
 
+// tool_result 只有 toolUseId，需反查 messages 找该 tool call 的 toolName
+function findToolCallName(
+  messages: ChatItem[],
+  toolCallId: string
+): string | null {
+  for (const m of messages) {
+    const tc = m.toolCalls?.find((t) => t.toolCallId === toolCallId);
+    if (tc) return tc.toolName;
+  }
+  return null;
+}
+
 function dispatchToStore(msg: ServerMessage): void {
   const agent = useAgentStore.getState();
   const project = useProjectStore.getState();
@@ -187,6 +200,19 @@ function dispatchToStore(msg: ServerMessage): void {
         content: content ?? "",
         isError: !!isError,
       });
+      // 配色提案联动：generate_color_palettes 成功 → 解析存入 activeProposals，
+      // 供前端色卡 + 对话颜色自动匹配用
+      if (!isError && content) {
+        const toolName = findToolCallName(agent.chatMessages, toolUseId);
+        if (
+          toolName &&
+          (toolName === "generate_color_palettes" ||
+            toolName.endsWith("__generate_color_palettes"))
+        ) {
+          const palettes = parsePalettes(content);
+          if (palettes) agent.setActiveProposals(palettes);
+        }
+      }
       break;
     }
 

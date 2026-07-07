@@ -118,8 +118,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   loading: false,
   error: null,
 
-  applyAgentConfig: (config) =>
-    set((s) => {
+  applyAgentConfig: (config) => {
+    // dev-only 不变量：palette 存在时，顶层 background 应等于 palette.colors.background
+    if (
+      import.meta.env.DEV &&
+      config.palette &&
+      config.background.toUpperCase() !==
+        config.palette.colors.background.toUpperCase()
+    ) {
+      console.warn(
+        `[palette] background 不一致：config.background=${config.background} ≠ palette.colors.background=${config.palette.colors.background}`
+      );
+    }
+    return set((s) => {
       // 乐观添加到 versions 列表，让版本工具栏立即可见
       const draftVersion: VersionMeta = {
         id: s.draft?.id ?? "__local_pending__",
@@ -142,7 +153,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           : { id: "__local_pending__", config },
         versions: [...filtered, draftVersion],
       };
-    }),
+    });
+  },
 
   loadProject: async (id) => {
     set({ loading: true, error: null });
