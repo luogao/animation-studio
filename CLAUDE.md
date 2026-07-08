@@ -96,6 +96,9 @@ Plain History API at `/p/:projectId` (no react-router). `src/App.tsx` parses on 
 
 When editing the type, update **all four** places: the TS interface, the system prompt's interface block in `server/prompts.ts`, the `update_scene_config` tool's `inputSchema` in `server/agent.ts`, and the effect factory in `src/lib/gsapEffects.ts` if a new phase/effect name is introduced.
 
+### Color palette system
+`SceneConfig.palette?` (`Palette`) is the semantic color baseline — 6 roles (`primary`/`secondary`/`accent`/`neutral`/`foreground`/`background`) plus `name`/`description`/`harmony`/`seed` metadata. The agent **bakes** semantic colors into concrete hex on each actor/connection/effect (not token references), so the render layer and export contract are unchanged; `config.background` must equal `palette.colors.background` (dev-warned in `applyAgentConfig`). Design split: the **algorithm** (`src/lib/colorPalette.ts` — pure fns: hex↔HSL, WCAG `ensureContrast`, `generatePalettes`) guarantees harmony (math); the **agent** guarantees taste (naming/description/which-role-to-bake). `generate_color_palettes` only generates unnamed proposals; the agent names the 3, lets the user pick, then `update_scene_config` applies. Role→element mapping (accent→focal/CTA, primary/secondary→supporting bodies, foreground→text, neutral→shadows, glow=lighten(accent)) is encoded in the system prompt's 配色系统 block. `src/lib/colorPalette.ts` is shared frontend↔server, so it's added **file-level** to `tsconfig.server.json` `include` (do NOT add all of `src/lib/` — `exportMedia.ts`/`exportConfig.ts` pull browser APIs). `DEFAULT_SCENE_CONFIG` ships a `Studio Gold` (`custom`) baseline. MCP toolNames arrive prefixed (`mcp__studio__…`); `ToolCallCard.shortToolName()` strips the prefix before matching.
+
 ### State stores — three-way split
 The old single `sceneStore` was replaced with three focused stores:
 
@@ -166,10 +169,11 @@ The agent receives the **current** config in every `chat` message and must retur
 2. Wrap with `createSdkMcpServer({ name: "studio", tools: [...] })` → pass as `mcpServers: { studio }` to `query()`.
 3. `query()` options: `tools: []` disables all built-in tools so the agent can only call our MCP tools; `permissionMode: "bypassPermissions"` + `allowDangerouslySkipPermissions: true` skips prompts (safe because the only callable tools are our in-process handlers).
 4. **Session resume**: SDK has **no `messages` option** in `query()`. Multi-turn memory works via `Options.sessionId` (first turn) / `Options.resume` (subsequent turns); SDK persists conversation JSONL to `<CLAUDE_CONFIG_DIR>/projects/<sanitized-cwd>/<sessionId>.jsonl`. We override `CLAUDE_CONFIG_DIR` via `Options.env` to `.data/sessions/` (exported as `SESSIONS_DIR` from `server/db/index.ts`). Per-project `claude_session_id` stored in `projects` table; `getSessionId`/`setSessionId` in `server/db/projects.ts`. DB messages are now UI-level cache only — SDK session is the source of truth for agent memory. Note: relocating `CLAUDE_CONFIG_DIR` moves the **entire** Claude state root (todos/, shell-snapshots/, .credentials.json, history.jsonl, etc.) into `.data/sessions/`, not just session JSONLs.
-5. Three MCP tools:
+5. Four MCP tools:
    - `update_scene_config(config)` — full SceneConfig, persists to draft.
    - `get_version_history()` — no args, returns JSON of version tree for current project.
    - `rollback_to_version(targetVersionId, confirmation)` — must pass `confirmation: true` to execute; `false` returns error text asking user to confirm. Executes git-style rollback.
+   - `generate_color_palettes(seedColor, schemes?)` — pure-algorithm tool (no DB/callbacks). Derives 3 harmonically-sound palettes (analogous/complementary/triadic) from a seed color via `src/lib/colorPalette.ts`, all WCAG-contrast-checked. Returns unnamed palettes as JSON; the agent names/describes them and, on user selection, bakes them into actor hex via `update_scene_config`.
 6. Iterate the returned `Query` async generator. `assistant` messages contain `message.content[]` blocks (`text` / `tool_use`). `tool_use` blocks for our tools are dispatched in-process by the MCP handler — no need to parse them here. Multi-turn text deltas are joined with `\n\n`.
 7. The handler runs **in-process** and calls `callbacks.onConfigUpdate(args)` synchronously — the new config flows to the client via the WS `config_update` message in `wsHandler.ts`.
 

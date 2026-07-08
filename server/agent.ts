@@ -3,10 +3,11 @@
 //
 // 职责：
 // - 把 user 消息 + 当前 SceneConfig + 版本上下文包装成 prompt
-// - 通过 createSdkMcpServer + tool() 注册 3 个自定义工具：
+// - 通过 createSdkMcpServer + tool() 注册 4 个自定义工具：
 //     · update_scene_config(config)
 //     · get_version_history()
 //     · rollback_to_version(targetVersionId, confirmation)
+//     · generate_color_palettes(seedColor, schemes?)
 // - 流式迭代 SDK 消息，把 assistant 文字和 config 更新回传给前端
 //
 // Auth：本文件不做任何 API key 检查。SDK 启动 Claude Code CLI 子进程，
@@ -50,7 +51,9 @@ import type {
   Connection,
   Phase,
   Effect,
+  HarmonyScheme,
 } from "../src/types/scene.js";
+import { generatePalettes } from "../src/lib/colorPalette.js";
 
 // ------------------------------------------------------------
 // 项目根目录解析：以本文件位置锚定，不依赖 process.cwd()
@@ -209,6 +212,30 @@ const effectShape = {
   color: z.string().optional(),
 };
 
+const paletteColorsShape = {
+  primary: z.string().describe("#RRGGBB 大写"),
+  secondary: z.string(),
+  accent: z.string(),
+  neutral: z.string(),
+  foreground: z.string(),
+  background: z.string(),
+};
+
+const paletteShape = {
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  harmony: z.enum([
+    "analogous",
+    "complementary",
+    "split-complementary",
+    "triadic",
+    "custom",
+  ]),
+  seed: z.string().describe("用户选择的主色 #RRGGBB"),
+  colors: z.object(paletteColorsShape),
+};
+
 const sceneConfigShape = {
   width: z.number(),
   height: z.number(),
@@ -218,6 +245,7 @@ const sceneConfigShape = {
   connections: z.array(z.object(connectionShape)),
   phases: z.array(z.object(phaseShape)),
   effects: z.array(z.object(effectShape)).optional(),
+  palette: z.object(paletteShape).optional(),
 };
 
 // ============================================================
@@ -492,9 +520,53 @@ export async function runAgent(
       }
     );
 
+    // ── 工具 4：generate_color_palettes ──
+    // 纯算法生成，无 DB/无 callback。返回 3 套语义化 Palette（name/description 空），
+    // agent 在回复里命名 + 描述，用户选定后再用 update_scene_config 应用。
+    const generatePalettesTool = tool(
+      "generate_color_palettes",
+      "当用户想换配色、提到“主色/调色板/配色方案/换个颜色风格/重新上色”时调用。传入用户选择的主色（hex）。返回 3 套数学上保证和谐的配色方案（每套含 primary/secondary/accent/neutral/foreground/background 6 个语义色，已通过 WCAG 对比度校验）。本工具只负责算法生成，不负责命名——你需要在回复里为每套方案起一个有品味的名字和简短风格描述，然后让用户选择（“请告诉我用第几套”，不要自作主张直接应用）。用户选定后，调用 update_scene_config 把所选 palette 和按角色烘焙的 hex 一起写入。",
+      {
+        seedColor: z
+          .string()
+          .describe("用户选择的主色，6位十六进制，如 #E8A230 或 E8A230"),
+        schemes: z
+          .array(
+            z.enum(["analogous", "complementary", "split-complementary", "triadic"])
+          )
+          .optional()
+          .describe(
+            "要生成的配色方案类型，默认 [analogous, complementary, triadic] 共 3 套"
+          ),
+      },
+      async (args) => {
+        const { seedColor, schemes } = args as {
+          seedColor: string;
+          schemes?: HarmonyScheme[];
+        };
+        try {
+          const palettes = generatePalettes(seedColor, { schemes });
+          return {
+            content: [
+              { type: "text" as const, text: JSON.stringify({ palettes }, null, 2) },
+            ],
+          };
+        } catch (err) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `生成配色失败：${err instanceof Error ? err.message : String(err)}`,
+              },
+            ],
+          };
+        }
+      }
+    );
+
     const mcpServer = createSdkMcpServer({
       name: "studio",
-      tools: [updateTool, historyTool, rollbackTool],
+      tools: [updateTool, historyTool, rollbackTool, generatePalettesTool],
     });
 
     // ── 构造 prompt（含每轮版本前缀）──

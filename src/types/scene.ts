@@ -73,18 +73,60 @@ export interface Phase {
 export interface Effect {
   type: EffectType;
   target: string; // actor id
+  // NOTE: useGsapTimeline 尚未消费 effect 颜色（只遍历 phases）；
+  // agent 仍按 palette.accent 烘焙此处以保持前向兼容
   color?: string;
+}
+
+// ============================================================
+// 配色系统 —— 语义化调色板，场景颜色的单一事实源
+// agent 把语义色烘焙成具体 hex 填到每个 actor/connection/effect
+// ============================================================
+
+export type PaletteColorRole =
+  | "primary" // 30% 主要/支撑 actor body
+  | "secondary" // 30% 连线、次要 actor
+  | "accent" // 10% 焦点/签名 actor、CTA（稀缺资源）
+  | "neutral" // 阴影/容器/边框（低饱和暗色）
+  | "foreground" // 文字/标签（高明度，强制过 WCAG AA）
+  | "background"; // 画布背景（60%）
+
+export type HarmonyScheme =
+  | "analogous" // ±30° 类比
+  | "complementary" // ±180° 互补
+  | "split-complementary" // +150°/−150° 分裂互补
+  | "triadic" // ±120° 三元
+  | "custom"; // 手工基线（如品牌默认）
+
+/** 六个语义角色的具体色值，均为规范大写 "#RRGGBB" */
+export interface PaletteColors {
+  primary: string;
+  secondary: string;
+  accent: string;
+  neutral: string;
+  foreground: string;
+  background: string;
+}
+
+export interface Palette {
+  id: string; // "p1".."p3"（算法生成）/ "brand-default"
+  name: string; // agent 应用时填写；提案阶段为 ""
+  description: string; // agent 风格描述；提案阶段为 ""
+  harmony: HarmonyScheme;
+  seed: string; // 用户选择的主色 "#RRGGBB"
+  colors: PaletteColors;
 }
 
 export interface SceneConfig {
   width: number;
   height: number;
   duration: number; // 秒
-  background: string; // 背景色
+  background: string; // 背景色；当 palette 存在时应等于 palette.colors.background
   actors: Actor[];
   connections: Connection[];
   phases: Phase[];
   effects?: Effect[];
+  palette?: Palette; // 当前配色基线；存在时所有颜色应从其语义角色派生
 }
 
 // ============================================================
@@ -117,7 +159,7 @@ export const DEFAULT_SCENE_CONFIG: SceneConfig = {
   width: 1440,
   height: 810,
   duration: 8,
-  background: "#0a0a0b",
+  background: "#0A0A0B",
   actors: [
     { id: "logoShadow", type: "circle", x: 660, y: 175, width: 140, height: 140, color: "#1a1a1c" },
     { id: "logoRing", type: "circle", x: 655, y: 155, width: 130, height: 130, color: "#E8A230", glow: "#E8A230" },
@@ -190,6 +232,21 @@ export const DEFAULT_SCENE_CONFIG: SceneConfig = {
     { type: "breathing-glow", target: "cta", color: "#E8A230" },
     { type: "breathing-glow", target: "rollW4", color: "#E8A230" },
   ],
+  palette: {
+    id: "brand-default",
+    name: "Studio Gold",
+    description: "品牌默认 — 暖橙金主色，冷蓝辅助，暗色画布",
+    harmony: "custom",
+    seed: "#E8A230",
+    colors: {
+      primary: "#E8A230",
+      secondary: "#4A9EFF",
+      accent: "#FF5E5E",
+      neutral: "#1A1A1C",
+      foreground: "#8A8A95",
+      background: "#0A0A0B",
+    },
+  },
 };
 
 // ============================================================

@@ -10,6 +10,7 @@ import { VersionToolbar } from "./components/VersionToolbar";
 import { ChatPanel } from "./components/ChatPanel";
 import { ProjectSwitcher } from "./components/ProjectSwitcher";
 import { LlmConfigDialog } from "./components/LlmConfigDialog";
+import { ColorPalettePanel } from "./components/ColorPalettePanel";
 import { buildExportEnvelope, downloadConfig } from "./lib/exportConfig";
 import { exportVideo, exportGif } from "./lib/exportMedia";
 import { Button } from "@/components/ui/button";
@@ -170,6 +171,7 @@ export default function App() {
           <VersionToolbar />
           <div className="ml-auto flex items-center gap-2">
             <EditModeToggle />
+            <ColorPalettePanel />
             <LlmConfigDialog />
             <div className="relative" ref={exportRef}>
               <Button

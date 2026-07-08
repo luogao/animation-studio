@@ -21,3 +21,8 @@ dist/
 
 # Playwright MCP 测试快照（运行时产物）
 .playwright-mcp/
+
+# 根目录验证截图（开发/QA 临时产物）
+/export-button.png
+/new-default-config.png
+/verification-old-project.png
