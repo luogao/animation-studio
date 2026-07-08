@@ -13,6 +13,7 @@ import type { SceneConfig } from "../types/scene";
 import { ActorRenderer } from "./ActorRenderer";
 import { ConnectionRenderer } from "./ConnectionRenderer";
 import { useSelectionStore } from "../store/selectionStore";
+import { useFontLoader } from "../hooks/useFontLoader";
 
 interface Props {
   config: SceneConfig;
@@ -28,6 +29,9 @@ export function DynamicScene({ config }: Props) {
 
   const isEditMode = useSelectionStore((s) => s.isEditMode);
   const deselectAll = useSelectionStore((s) => s.deselectAll);
+
+  // 动态加载 Google Fonts
+  useFontLoader(config.fonts);
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!isEditMode) return;

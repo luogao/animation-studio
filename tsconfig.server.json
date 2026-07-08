@@ -6,9 +6,10 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
     "noEmit": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["server", "src/types", "src/lib/colorPalette.ts"]
+  "include": ["server", "src/types", "src/lib/colorPalette.ts", "src/lib/googleFonts.ts"]
 }

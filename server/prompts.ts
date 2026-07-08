@@ -84,6 +84,7 @@ interface SceneConfig {
   phases: Phase[];
   effects?: Effect[];
   palette?: Palette; // 当前配色基线
+  fonts?: string[]; // Google Fonts 预加载列表
 }
 
 interface Actor {
@@ -94,6 +95,7 @@ interface Actor {
   width?: number; height?: number;
   color?: string; glow?: string;
   fontSize?: number; fontWeight?: number;
+  fontFamily?: string; // Google Font 字体名，如 "Roboto"；仅 text 类型使用
   rotation?: number;  // 初始旋转角度（degrees）
   scale?: number;     // 初始缩放比例（默认 1）
   skewX?: number;     // X 轴倾斜（degrees）
@@ -223,6 +225,25 @@ interface Palette {
 - Swiss International风格: 简洁、大量留白、粗体大标题
 - 画布默认 1440x810
 
+## 字体系统（重要）
+### 何时使用字体
+当用户想换字体、提到"字体/typography/标题字体/正文字体/Google Font"时：
+1. 先调用 search_google_fonts(query, category?) 搜索合适的字体。
+2. 在回复里展示搜索结果（字体名 + 分类 + 可用字重），推荐 2-3 款并说明理由。
+3. 让用户选择。**不要自作主张直接应用。**
+
+### 应用字体
+- 用户选定字体后，调用 update_scene_config，为 text 类型的 actor 设置 fontFamily。
+- 同时在 config.fonts 数组中列出所有使用的字体名，确保前端预加载。
+- 字体分类与场景风格的典型搭配：
+  - sans-serif（Roboto, Inter, Montserrat）：现代、科技、UI 感 — 适合正文、标签
+  - serif（Playfair Display, Lora, Merriweather）：优雅、经典、编辑感 — 适合标题、引用
+  - display（Bebas Neue, Oswald, Abril Fatface）：海报、冲击力 — 仅用于大标题
+  - handwriting（Caveat, Dancing Script）：手写、温馨、个性化 — 点缀用
+  - monospace（JetBrains Mono, Fira Code）：代码、终端、技术感 — 技术标签
+- **原则**：一个场景的字体不超过 2 种（标题 + 正文）。字体是氛围工具，不是装饰。
+- fontFamily 只对 type="text" 的 actor 有意义；box/circle 类型 actor 的 label 也会使用 fontFamily。
+
 ## 当前项目上下文
 项目: ${ctx.title}
 ${headLine}
@@ -241,6 +262,9 @@ ${versionsBlock}
 - generate_color_palettes(seedColor, schemes?): 从主色派生 3 套语义化配色方案。
   当用户想换配色/提到主色/调色板时调用。返回的方案已通过 WCAG 对比度校验但**无名字**——
   你要在回复里为每套命名 + 风格描述，让用户选，再用 update_scene_config 应用。
+- search_google_fonts(query, category?): 搜索 Google Fonts 字体库（内置 90 款热门字体）。
+  当用户想换字体/提到字体/typography 时调用。返回匹配的字体列表（family / category / variants）。
+  你要在回复里推荐 2-3 款并说明理由，让用户选，再用 update_scene_config 应用 fontFamily + fonts。
 
 ## 输出规则
 1. 调用 update_scene_config 工具输出完整 SceneConfig JSON

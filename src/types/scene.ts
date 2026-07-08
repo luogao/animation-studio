@@ -30,6 +30,7 @@ export interface Actor {
   glow?: string; // 发光色
   fontSize?: number;
   fontWeight?: number;
+  fontFamily?: string; // Google Font 字体名，如 "Roboto", "Playfair Display"；仅 text 类型使用
   // === 初始变换属性 ===
   rotation?: number; // 初始旋转角度（degrees）
   scale?: number; // 初始缩放比例（默认 1）
@@ -127,6 +128,7 @@ export interface SceneConfig {
   phases: Phase[];
   effects?: Effect[];
   palette?: Palette; // 当前配色基线；存在时所有颜色应从其语义角色派生
+  fonts?: string[]; // 需要预加载的 Google Font 字体列表，如 ["Roboto", "Playfair Display"]
 }
 
 // ============================================================
@@ -247,6 +249,7 @@ export const DEFAULT_SCENE_CONFIG: SceneConfig = {
       background: "#0A0A0B",
     },
   },
+  fonts: [],
 };
 
 // ============================================================

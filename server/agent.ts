@@ -3,11 +3,12 @@
 //
 // 职责：
 // - 把 user 消息 + 当前 SceneConfig + 版本上下文包装成 prompt
-// - 通过 createSdkMcpServer + tool() 注册 4 个自定义工具：
+// - 通过 createSdkMcpServer + tool() 注册 5 个自定义工具：
 //     · update_scene_config(config)
 //     · get_version_history()
 //     · rollback_to_version(targetVersionId, confirmation)
 //     · generate_color_palettes(seedColor, schemes?)
+//     · search_google_fonts(query, category?)
 // - 流式迭代 SDK 消息，把 assistant 文字和 config 更新回传给前端
 //
 // Auth：本文件不做任何 API key 检查。SDK 启动 Claude Code CLI 子进程，
@@ -54,6 +55,7 @@ import type {
   HarmonyScheme,
 } from "../src/types/scene.js";
 import { generatePalettes } from "../src/lib/colorPalette.js";
+import { searchFonts } from "../src/lib/googleFonts.js";
 
 // ------------------------------------------------------------
 // 项目根目录解析：以本文件位置锚定，不依赖 process.cwd()
@@ -130,6 +132,7 @@ const actorShape = {
   glow: z.string().optional().describe("发光色，drop-shadow 用"),
   fontSize: z.number().optional(),
   fontWeight: z.number().optional(),
+  fontFamily: z.string().optional().describe("Google Font 字体名，如 Roboto / Playfair Display。仅对 type='text' 的 actor 生效"),
   rotation: z.number().optional().describe("初始旋转角度（degrees）"),
   scale: z.number().optional().describe("初始缩放比例（默认 1）"),
   skewX: z.number().optional().describe("X 轴倾斜（degrees）"),
@@ -246,6 +249,7 @@ const sceneConfigShape = {
   phases: z.array(z.object(phaseShape)),
   effects: z.array(z.object(effectShape)).optional(),
   palette: z.object(paletteShape).optional(),
+  fonts: z.array(z.string()).optional().describe("需要预加载的 Google Font 字体列表，如 [\"Roboto\", \"Playfair Display\"]"),
 };
 
 // ============================================================
@@ -564,9 +568,47 @@ export async function runAgent(
       }
     );
 
+    // ── 工具 5：search_google_fonts ──
+    // 搜索内置 Google Fonts 目录（90 款热门字体）。纯查询，无 DB/无 callback。
+    // agent 展示搜索结果 → 用户选择 → update_scene_config 应用 fontFamily + fonts。
+    const searchFontsTool = tool(
+      "search_google_fonts",
+      "搜索 Google Fonts 字体库。当用户想换字体、提到「字体/typography/标题字体/正文字体/Google Font」时调用。传入搜索词和可选分类，返回匹配的字体列表（含 family / category / variants）。你需要展示搜索结果，推荐 2-3 款并说明理由，然后让用户选择。**不要自作主张直接应用。**用户选定后，调用 update_scene_config 为 text 类型 actor 设置 fontFamily，同时在 config.fonts 列表中列出所有使用的字体名。",
+      {
+        query: z.string().describe("搜索词，模糊匹配字体名称（如 \"Roboto\", \"display\", \"手写\"）"),
+        category: z
+          .enum(["serif", "sans-serif", "display", "handwriting", "monospace"])
+          .optional()
+          .describe("按分类过滤：serif=衬线, sans-serif=无衬线, display=展示, handwriting=手写, monospace=等宽"),
+      },
+      async (args) => {
+        const { query, category } = args as {
+          query: string;
+          category?: "serif" | "sans-serif" | "display" | "handwriting" | "monospace";
+        };
+        try {
+          const results = searchFonts(query, category, 10);
+          return {
+            content: [
+              { type: "text" as const, text: JSON.stringify({ fonts: results }, null, 2) },
+            ],
+          };
+        } catch (err) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `搜索字体失败：${err instanceof Error ? err.message : String(err)}`,
+              },
+            ],
+          };
+        }
+      }
+    );
+
     const mcpServer = createSdkMcpServer({
       name: "studio",
-      tools: [updateTool, historyTool, rollbackTool, generatePalettesTool],
+      tools: [updateTool, historyTool, rollbackTool, generatePalettesTool, searchFontsTool],
     });
 
     // ── 构造 prompt（含每轮版本前缀）──

@@ -13,6 +13,7 @@ import { useState } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import type { SceneConfig } from "../types/scene";
 import { PaletteProposalPicker } from "./PaletteProposalPicker";
+import { FontProposalPicker } from "./FontProposalPicker";
 
 export const ToolCallCard: ToolCallMessagePartComponent = ({
   toolName,
@@ -61,6 +62,10 @@ export const ToolCallCard: ToolCallMessagePartComponent = ({
         <PaletteProposalPicker result={result} />
       )}
 
+      {!running && !isError && shortName === "search_google_fonts" && (
+        <FontProposalPicker result={result} />
+      )}
+
       {expanded && argsDisplay && (
         <pre className="tool-card-body">{argsDisplay}</pre>
       )}
@@ -99,6 +104,10 @@ function summarizeTool(name: string, args: unknown): string | null {
     case "generate_color_palettes": {
       const a = args as { seedColor?: string };
       return `生成配色 · 主色 ${a.seedColor ?? ""}`;
+    }
+    case "search_google_fonts": {
+      const a = args as { query?: string; category?: string };
+      return `搜索字体 · "${a.query ?? ""}"${a.category ? ` · ${a.category}` : ""}`;
     }
     case "rollback_to_version": {
       const a = args as { targetVersionId?: string };

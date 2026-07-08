@@ -64,6 +64,7 @@ export function ActorRenderer({ actor }: Props) {
     glow,
     fontSize = 14,
     fontWeight = 500,
+    fontFamily,
   } = actor;
 
   // ── 选取状态 ──
@@ -111,6 +112,7 @@ export function ActorRenderer({ actor }: Props) {
           label,
           fontSize,
           fontWeight,
+          fontFamily,
         })}
       </g>
 
@@ -148,6 +150,7 @@ interface ShapeProps {
   label?: string;
   fontSize: number;
   fontWeight: number;
+  fontFamily?: string;
 }
 
 function renderShape(type: Actor["type"], p: ShapeProps) {
@@ -175,7 +178,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
               fill={p.color}
               fontSize={p.fontSize}
               fontWeight={p.fontWeight}
-              fontFamily="var(--font-sans)"
+              fontFamily={p.fontFamily ?? "var(--font-sans)"}
               data-actor-part="label"
             >
               {p.label}
@@ -207,7 +210,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
               fill={p.color}
               fontSize={p.fontSize}
               fontWeight={p.fontWeight}
-              fontFamily="var(--font-sans)"
+              fontFamily={p.fontFamily ?? "var(--font-sans)"}
               data-actor-part="label"
             >
               {p.label}
@@ -244,7 +247,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
               fill={p.color}
               fontSize={p.fontSize}
               fontWeight={p.fontWeight}
-              fontFamily="var(--font-sans)"
+              fontFamily={p.fontFamily ?? "var(--font-sans)"}
               data-actor-part="label"
             >
               {p.label}
@@ -264,7 +267,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
           fill={p.color}
           fontSize={p.fontSize}
           fontWeight={p.fontWeight}
-          fontFamily="var(--font-sans)"
+          fontFamily={p.fontFamily ?? "var(--font-sans)"}
           data-actor-part="text"
         >
           {p.label ?? ""}
@@ -291,7 +294,7 @@ function renderShape(type: Actor["type"], p: ShapeProps) {
               fill={p.color}
               fontSize={p.fontSize}
               fontWeight={p.fontWeight}
-              fontFamily="var(--font-sans)"
+              fontFamily={p.fontFamily ?? "var(--font-sans)"}
               data-actor-part="label"
             >
               {p.label}
