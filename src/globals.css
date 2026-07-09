@@ -589,3 +589,51 @@ svg[data-edit-mode="true"] .actor-group {
 .chat-panel ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* ============================================================
+   Studio Header — 沉浸式创作顶部栏
+   ============================================================ */
+.studio-header {
+  min-height: 48px;
+}
+
+/* ============================================================
+   首页 Hero 输入区
+   ============================================================ */
+.home-hero-card {
+  border: 2px solid var(--spot-2);
+  background: var(--paper);
+}
+
+/* ============================================================
+   项目卡片 & 模板卡片 hover 效果（Duotone 硬边）
+   ============================================================ */
+.project-card-enter {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.project-card-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* ============================================================
+   对话面板折叠过渡
+   ============================================================ */
+.chat-panel-wrapper {
+  transition: width 0.25s ease, opacity 0.2s ease;
+}
+.chat-panel-wrapper.collapsed {
+  width: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+
+/* ============================================================
+   浮动输入条（画布全屏时底部）
+   ============================================================ */
+.float-composer {
+  border-top: 2px solid var(--spot-2);
+  background: var(--paper);
+}

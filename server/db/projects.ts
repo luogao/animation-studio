@@ -147,5 +147,14 @@ export function setSessionId(projectId: string, sessionId: string): void {
   ).run(sessionId, projectId);
 }
 
+// ------------------------------------------------------------
+// 删除项目（级联删除 versions、messages 通过 FK）
+// ------------------------------------------------------------
+export function deleteProject(id: string): void {
+  // 先验证项目存在
+  getProjectRow(id);
+  db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
+}
+
 // 重新导出 SceneConfig 类型供 routes 使用
 export type { SceneConfig };

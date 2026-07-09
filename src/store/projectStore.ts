@@ -79,6 +79,7 @@ interface ProjectState {
   commitDraft: (label?: string) => Promise<void>;
   discardDraft: () => Promise<void>;
   rollbackTo: (versionId: string) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
 }
 
 // ============================================================
@@ -289,6 +290,33 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         loading: false,
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+  },
+
+  deleteProject: async (id) => {
+    set({ loading: true, error: null });
+    try {
+      await api(`/api/projects/${id}`, { method: "DELETE" });
+      // 如果删除的是当前打开的项目，清空状态
+      if (get().projectId === id) {
+        set({
+          projectId: null,
+          projectTitle: null,
+          headVersionId: null,
+          committedConfig: DEFAULT_SCENE_CONFIG,
+          draft: null,
+          versions: [],
+          loading: false,
+        });
+      } else {
+        set({ loading: false });
+      }
+    } catch (err) {
+      set({
+        loading: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
     }
   },
 }));
