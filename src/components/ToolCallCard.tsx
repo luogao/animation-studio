@@ -13,7 +13,6 @@ import { useState } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import type { SceneConfig } from "../types/scene";
 import { PaletteProposalPicker } from "./PaletteProposalPicker";
-import { FontProposalPicker } from "./FontProposalPicker";
 
 export const ToolCallCard: ToolCallMessagePartComponent = ({
   toolName,
@@ -60,10 +59,6 @@ export const ToolCallCard: ToolCallMessagePartComponent = ({
 
       {!running && !isError && shortName === "generate_color_palettes" && (
         <PaletteProposalPicker result={result} />
-      )}
-
-      {!running && !isError && shortName === "search_google_fonts" && (
-        <FontProposalPicker result={result} />
       )}
 
       {expanded && argsDisplay && (

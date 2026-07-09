@@ -573,7 +573,7 @@ export async function runAgent(
     // agent 展示搜索结果 → 用户选择 → update_scene_config 应用 fontFamily + fonts。
     const searchFontsTool = tool(
       "search_google_fonts",
-      "搜索 Google Fonts 字体库。当用户想换字体、提到「字体/typography/标题字体/正文字体/Google Font」时调用。传入搜索词和可选分类，返回匹配的字体列表（含 family / category / variants）。你需要展示搜索结果，推荐 2-3 款并说明理由，然后让用户选择。**不要自作主张直接应用。**用户选定后，调用 update_scene_config 为 text 类型 actor 设置 fontFamily，同时在 config.fonts 列表中列出所有使用的字体名。",
+      "搜索 Google Fonts 字体库。当用户想换字体、提到「字体/typography/标题字体/正文字体/Google Font」时调用。传入搜索词和可选分类，返回匹配的字体列表（含 family / category / variants）。**每次换字体只调用一次本工具**：用一个较宽的搜索词（或带一个分类）搜一次，从返回结果里挑 2-3 款推荐并说明理由——不要每款候选字体各搜一次（那样会刷出多个选择器卡片）。然后让用户选择。**不要自作主张直接应用。**用户选定后，调用 update_scene_config 为 text 类型 actor 设置 fontFamily，同时在 config.fonts 列表中列出所有使用的字体名。",
       {
         query: z.string().describe("搜索词，模糊匹配字体名称（如 \"Roboto\", \"display\", \"手写\"）"),
         category: z

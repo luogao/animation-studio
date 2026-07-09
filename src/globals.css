@@ -563,3 +563,29 @@ svg[data-edit-mode="true"] .actor-group {
     animation: none;
   }
 }
+
+/* ============================================================
+   左侧对话区滚动条 —— Duotone Poster 风格
+   细、海军蓝、硬边；hover 加深。只作用于 .chat-panel，不影响画布区。
+   ============================================================ */
+.chat-panel {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--spot-2) 50%, transparent) transparent;
+}
+.chat-panel ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.chat-panel ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-panel ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--spot-2) 50%, transparent);
+  border-radius: 0; /* poster 硬边 */
+}
+.chat-panel ::-webkit-scrollbar-thumb:hover {
+  background: var(--spot-2);
+}
+.chat-panel ::-webkit-scrollbar-corner {
+  background: transparent;
+}

@@ -15,6 +15,7 @@ import type { PaletteColorRole, HarmonyScheme } from "../types/scene";
 import { parsePalettes } from "../lib/colorPalette";
 import { sendMessage } from "../hooks/useWebSocket";
 import { useAgentStore } from "../store/agentStore";
+import { useProposalStale } from "./proposalLock";
 
 const PALETTE_ROLE_ORDER: PaletteColorRole[] = [
   "primary",
@@ -35,6 +36,9 @@ const HARMONY_LABELS: Record<HarmonyScheme, string> = {
 
 export function PaletteProposalPicker({ result }: { result: unknown }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [used, setUsed] = useState<null | "confirmed" | "rejected">(null);
+  const stale = useProposalStale();
+  const locked = !!used || stale;
   const clearActiveProposals = useAgentStore((s) => s.clearActiveProposals);
   const palettes = parsePalettes(result);
 
@@ -44,7 +48,8 @@ export function PaletteProposalPicker({ result }: { result: unknown }) {
   const selected = selectedIndex >= 0 ? palettes[selectedIndex] : null;
 
   const handleConfirm = () => {
-    if (!selected) return;
+    if (locked || !selected) return;
+    setUsed("confirmed");
     clearActiveProposals();
     void sendMessage(
       `使用配色方案 ${selected.id}（${selected.harmony}）为当前场景重新上色`
@@ -52,6 +57,8 @@ export function PaletteProposalPicker({ result }: { result: unknown }) {
   };
 
   const handleReject = () => {
+    if (locked) return;
+    setUsed("rejected");
     clearActiveProposals();
     void sendMessage(
       "这 3 套配色都不太合适，换个思路——换一个主色或换一种和谐方案，重新给我 3 套选择"
@@ -59,12 +66,25 @@ export function PaletteProposalPicker({ result }: { result: unknown }) {
   };
 
   return (
-    <div className="palette-picker my-2 flex flex-col gap-2">
+    <div
+      className="palette-picker my-2 flex flex-col gap-2"
+      data-used={used ?? undefined}
+    >
       <div className="text-xs font-semibold text-foreground">
-        🎨 选择一套配色
-        <span className="ml-1 font-normal text-muted-foreground">
-          （点选后确认）
-        </span>
+        {used === "confirmed" ? (
+          <>✅ 已应用配色</>
+        ) : used === "rejected" ? (
+          <>↻ 已换一批，等待新结果</>
+        ) : stale ? (
+          <>🔒 此提案已结束</>
+        ) : (
+          <>
+            🎨 选择一套配色
+            <span className="ml-1 font-normal text-muted-foreground">
+              （点选后确认）
+            </span>
+          </>
+        )}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -74,12 +94,14 @@ export function PaletteProposalPicker({ result }: { result: unknown }) {
             <button
               key={p.id}
               type="button"
+              disabled={locked}
               onClick={() => setSelectedId(p.id)}
               className={
                 "flex items-center gap-2 p-2 rounded border-2 text-left transition-colors " +
                 (isSel
                   ? "border-primary bg-primary/5 ring-1 ring-primary"
-                  : "border-border bg-background/50 hover:bg-accent/40")
+                  : "border-border bg-background/50 hover:bg-accent/40") +
+                (locked ? " opacity-60 cursor-not-allowed" : "")
               }
               aria-pressed={isSel}
             >
@@ -119,21 +141,31 @@ export function PaletteProposalPicker({ result }: { result: unknown }) {
       <div className="flex items-center gap-2">
         <button
           type="button"
-          disabled={!selected}
+          disabled={locked || !selected}
           onClick={handleConfirm}
           className={
             "px-3 py-1.5 text-xs font-medium rounded border-2 transition-colors " +
-            (selected
-              ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
-              : "border-border bg-muted text-muted-foreground cursor-not-allowed")
+            (locked || !selected
+              ? "border-border bg-muted text-muted-foreground cursor-not-allowed"
+              : "border-primary bg-primary text-primary-foreground hover:bg-primary/90")
           }
         >
-          {selected ? `确认使用方案 ${selectedIndex + 1}` : "请先选择一套"}
+          {used === "confirmed"
+            ? "已应用"
+            : stale
+            ? "已结束"
+            : selected
+            ? `确认使用方案 ${selectedIndex + 1}`
+            : "请先选择一套"}
         </button>
         <button
           type="button"
+          disabled={locked}
           onClick={handleReject}
-          className="px-3 py-1.5 text-xs rounded border border-border bg-card text-muted-foreground hover:bg-accent transition-colors"
+          className={
+            "px-3 py-1.5 text-xs rounded border border-border bg-card text-muted-foreground transition-colors " +
+            (locked ? "opacity-60 cursor-not-allowed" : "hover:bg-accent")
+          }
         >
           都不喜欢
         </button>

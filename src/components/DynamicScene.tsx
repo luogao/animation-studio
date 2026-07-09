@@ -31,7 +31,18 @@ export function DynamicScene({ config }: Props) {
   const deselectAll = useSelectionStore((s) => s.deselectAll);
 
   // 动态加载 Google Fonts
-  useFontLoader(config.fonts);
+  // 兜底：除 config.fonts 外，也从 actors 的 fontFamily 反推要加载的字体。
+  // 避免 agent 只设了 actor.fontFamily、却忘了把字体名写进 config.fonts，
+  // 导致字体不加载、<text> 回退默认字体（看起来像「画面没变化」）。
+  const fontsToLoad = useMemo(() => {
+    const set = new Set<string>(config.fonts ?? []);
+    for (const a of config.actors) {
+      if (a.fontFamily) set.add(a.fontFamily);
+    }
+    return Array.from(set);
+  }, [config.fonts, config.actors]);
+
+  useFontLoader(fontsToLoad);
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!isEditMode) return;
