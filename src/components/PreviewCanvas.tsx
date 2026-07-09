@@ -27,7 +27,11 @@ export function PreviewCanvas() {
   // agent 修改场景后旧的 actor id 可能已失效
   const clearSelection = useSelectionStore((s) => s.clearSelection);
   useEffect(() => {
-    clearSelection();
+    // 编辑模式下不自动清除选中 — 用户正在手动编辑属性
+    const isEditing = useSelectionStore.getState().isEditMode;
+    if (!isEditing) {
+      clearSelection();
+    }
     // config 引用变化即触发（selectPreviewConfig 在 draft/committedConfig 变化时返回新引用）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);

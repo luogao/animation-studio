@@ -6,6 +6,7 @@ import type { DemoTemplate } from "../data/templates";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { ScenePreviewThumb } from "./ScenePreviewThumb";
 
 interface TemplateCardProps {
   template: DemoTemplate;
@@ -59,18 +60,9 @@ export function TemplateCard({ template }: TemplateCardProps) {
       disabled={busy}
       className="text-left group cursor-pointer border-2 border-foreground bg-card hover:bg-muted transition-colors p-0 overflow-hidden flex flex-col"
     >
-      {/* 色块预览区 */}
-      <div
-        className="h-24 flex items-center justify-center shrink-0"
-        style={{ backgroundColor: template.config.background }}
-      >
-        <div
-          className="w-12 h-12"
-          style={{
-            backgroundColor: template.previewColor,
-            opacity: 0.9,
-          }}
-        />
+      {/* 场景缩略预览 */}
+      <div className="h-28 shrink-0 overflow-hidden border-b border-foreground/20">
+        <ScenePreviewThumb config={template.config} />
       </div>
 
       {/* 信息区 */}

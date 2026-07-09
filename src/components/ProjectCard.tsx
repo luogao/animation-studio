@@ -23,6 +23,9 @@ interface ProjectListItem {
   updated_at: number;
   head_sequence: number | null;
   draft_id: string | null;
+  preview_bg?: string | null;
+  preview_width?: number | null;
+  preview_height?: number | null;
 }
 
 interface ProjectCardProps {
@@ -101,7 +104,28 @@ export function ProjectCard({ project, onDeleted }: ProjectCardProps) {
 
   return (
     <>
-      <div className="border-2 border-foreground bg-card p-5 flex flex-col gap-3 hover:bg-muted/50 transition-colors">
+      <div className="border-2 border-foreground bg-card hover:bg-muted/50 transition-colors overflow-hidden flex flex-col">
+        {/* 预览条 */}
+        {project.preview_bg && (
+          <div
+            className="h-14 shrink-0 border-b border-foreground/20 flex items-center justify-center relative"
+            style={{ backgroundColor: project.preview_bg }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div
+                className="w-6 h-6 rounded-sm opacity-60"
+                style={{ backgroundColor: project.preview_bg === "#0A0A0B" || project.preview_bg === "#000000" ? "#333" : "rgba(255,255,255,0.2)" }}
+              />
+            </div>
+            {project.preview_width && project.preview_height && (
+              <span className="absolute bottom-0.5 right-1.5 text-[8px] font-mono text-white/40">
+                {project.preview_width}×{project.preview_height}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="p-5 flex flex-col gap-3 flex-1">
         {/* 标题行 */}
         <div className="flex items-center justify-between gap-3">
           {renaming ? (
@@ -173,6 +197,7 @@ export function ProjectCard({ project, onDeleted }: ProjectCardProps) {
           >
             删除
           </Button>
+        </div>
         </div>
       </div>
 

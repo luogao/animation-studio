@@ -65,19 +65,28 @@ export function createProject(title?: string): ProjectRow {
 export function listProjects(): (ProjectRow & {
   head_sequence: number | null;
   draft_id: string | null;
+  preview_bg: string | null;
+  preview_width: number | null;
+  preview_height: number | null;
 })[] {
   return db
     .prepare(
       `SELECT
          p.*,
          (SELECT MAX(v.sequence) FROM versions v WHERE v.project_id = p.id AND v.status = 'committed') AS head_sequence,
-         (SELECT v.id FROM versions v WHERE v.project_id = p.id AND v.status = 'draft' LIMIT 1) AS draft_id
+         (SELECT v.id FROM versions v WHERE v.project_id = p.id AND v.status = 'draft' LIMIT 1) AS draft_id,
+         (SELECT json_extract(v.config_json, '$.background') FROM versions v WHERE v.project_id = p.id AND v.status = 'committed' ORDER BY v.sequence DESC LIMIT 1) AS preview_bg,
+         (SELECT json_extract(v.config_json, '$.width') FROM versions v WHERE v.project_id = p.id AND v.status = 'committed' ORDER BY v.sequence DESC LIMIT 1) AS preview_width,
+         (SELECT json_extract(v.config_json, '$.height') FROM versions v WHERE v.project_id = p.id AND v.status = 'committed' ORDER BY v.sequence DESC LIMIT 1) AS preview_height
        FROM projects p
        ORDER BY p.updated_at DESC`
     )
     .all() as (ProjectRow & {
     head_sequence: number | null;
     draft_id: string | null;
+    preview_bg: string | null;
+    preview_width: number | null;
+    preview_height: number | null;
   })[];
 }
 

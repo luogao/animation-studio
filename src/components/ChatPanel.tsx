@@ -37,7 +37,7 @@ export function ChatPanel({ children }: { children?: ReactNode }) {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <aside className="chat-panel flex flex-col bg-card text-card-foreground h-screen min-w-0">
+      <aside className="chat-panel flex flex-col bg-card text-card-foreground h-full min-w-0">
         {/* ── 顶部：项目切换（由 App 注入）── */}
         {children}
 

@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { sendMessage } from "../hooks/useWebSocket";
+import { Palette } from "lucide-react";
 
 export function ColorPalettePanel() {
   const [open, setOpen] = useState(false);
@@ -39,7 +40,7 @@ export function ColorPalettePanel() {
         variant="secondary"
         size="sm"
       >
-        🎨 配色
+        <Palette size={14} /> 配色
       </Button>
       {open && (
         <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded-md shadow-lg p-3 min-w-[220px] flex flex-col gap-2">

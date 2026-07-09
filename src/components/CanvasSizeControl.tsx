@@ -67,7 +67,7 @@ export function CanvasSizeControl() {
         onKeyDown={(e) => {
           if (e.key === "Enter") commit(width, height);
         }}
-        className="w-16 h-7 font-mono text-xs px-2"
+        className="w-[72px] h-7 font-mono text-xs px-2"
       />
 
       <span className="text-muted-foreground">×</span>
@@ -82,7 +82,7 @@ export function CanvasSizeControl() {
         onKeyDown={(e) => {
           if (e.key === "Enter") commit(width, height);
         }}
-        className="w-16 h-7 font-mono text-xs px-2"
+        className="w-[72px] h-7 font-mono text-xs px-2"
       />
 
       <Select value={currentValue} onValueChange={applyPreset}>

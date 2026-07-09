@@ -18,6 +18,9 @@ interface ProjectListItem {
   updated_at: number;
   head_sequence: number | null;
   draft_id: string | null;
+  preview_bg?: string | null;
+  preview_width?: number | null;
+  preview_height?: number | null;
 }
 
 function timeAgo(ms: number): string {
@@ -51,11 +54,11 @@ export default function HomePage() {
   }, []);
 
   const handleHeroSubmit = async () => {
-    if (busy || !heroText.trim()) return;
+    if (busy) return;
     setBusy(true);
     try {
-      const title =
-        heroText.trim().slice(0, 50) + (heroText.trim().length > 50 ? "…" : "");
+      const raw = heroText.trim();
+      const title = raw ? raw.slice(0, 50) + (raw.length > 50 ? "…" : "") : undefined;
       await createProject(title);
       const projectId = useProjectStore.getState().projectId;
       if (projectId) navigate(`/p/${projectId}`);
@@ -111,20 +114,26 @@ export default function HomePage() {
                 }}
                 disabled={busy}
               />
-              <div className="flex items-center justify-between px-2 py-1.5 border-t border-foreground/20">
+              <div className="flex items-center justify-end px-2 py-1.5 border-t border-foreground/20">
                 <span className="text-[10px] text-muted-foreground">
                   ⌘ + Enter 发送
                 </span>
-                <Button
-                  onClick={handleHeroSubmit}
-                  disabled={busy || !heroText.trim()}
-                  size="sm"
-                >
-                  {busy ? "创建中…" : "开始创作"}
-                  <ArrowRight size={14} />
-                </Button>
               </div>
             </div>
+
+            {/* 按钮独立一行，带入场动画 */}
+            <button
+              onClick={handleHeroSubmit}
+              disabled={busy}
+              className="hero-cta-button opacity-0 animate-hero-btn font-display text-lg font-bold uppercase tracking-wider
+                px-10 py-3.5 border-2 border-foreground bg-primary text-primary-foreground
+                hover:bg-primary/90 active:scale-[0.97]
+                disabled:opacity-30 disabled:cursor-not-allowed
+                transition-all duration-200"
+            >
+              {busy ? "创建中…" : "开始创作"}
+              <ArrowRight size={20} className="inline ml-2" />
+            </button>
           </section>
 
           {/* ============================================================
@@ -158,21 +167,36 @@ export default function HomePage() {
                     key={p.id}
                     onClick={() => handleOpenProject(p.id)}
                     disabled={busy}
-                    className="text-left border-2 border-foreground bg-card p-4 hover:bg-muted transition-colors cursor-pointer group"
+                    className="text-left border-2 border-foreground bg-card hover:bg-muted transition-colors cursor-pointer group overflow-hidden flex flex-col p-0"
                   >
-                    <h3 className="font-display text-sm font-bold text-foreground group-hover:text-primary transition-colors truncate">
-                      {p.title}
-                      {p.draft_id && (
-                        <span className="ml-1.5 text-[10px] text-primary font-normal">
-                          草稿
-                        </span>
-                      )}
-                    </h3>
-                    <p className="text-[10px] text-muted-foreground mt-1.5 font-mono">
-                      {p.head_sequence != null ? `v${p.head_sequence}` : "—"}
-                      {" · "}
-                      {timeAgo(p.updated_at)}
-                    </p>
+                    {/* 预览条 */}
+                    {p.preview_bg && (
+                      <div
+                        className="h-12 shrink-0 border-b border-foreground/20 flex items-center justify-center relative"
+                        style={{ backgroundColor: p.preview_bg }}
+                      >
+                        {p.preview_width && p.preview_height && (
+                          <span className="absolute bottom-0.5 right-1.5 text-[8px] font-mono text-white/30">
+                            {p.preview_width}×{p.preview_height}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="p-3 flex flex-col gap-1">
+                      <h3 className="font-display text-sm font-bold text-foreground group-hover:text-primary transition-colors truncate">
+                        {p.title}
+                        {p.draft_id && (
+                          <span className="ml-1.5 text-[10px] text-primary font-normal">
+                            草稿
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-[10px] text-muted-foreground font-mono">
+                        {p.head_sequence != null ? `v${p.head_sequence}` : "—"}
+                        {" · "}
+                        {timeAgo(p.updated_at)}
+                      </p>
+                    </div>
                   </button>
                 ))}
               </div>

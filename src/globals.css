@@ -637,3 +637,30 @@ svg[data-edit-mode="true"] .actor-group {
   border-top: 2px solid var(--spot-2);
   background: var(--paper);
 }
+
+/* ============================================================
+   Hero CTA 按钮入场动画
+   ============================================================ */
+@keyframes hero-btn-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.95);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-hero-btn {
+  animation: hero-btn-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-btn {
+    animation: none;
+    opacity: 1;
+  }
+}

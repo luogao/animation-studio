@@ -67,7 +67,7 @@ export function useGsapTimeline(
       // ── 把控制器塞进 store ──
       const controller = {
         play: () => {
-          if (tl!.paused() && tl!.time() >= tl!.duration() - 0.001) {
+          if (tl!.time() >= tl!.duration() - 0.001) {
             tl!.seek(0);
           }
           tl!.play();
