@@ -218,24 +218,18 @@ export function encodeGif(
 ): Uint8Array {
   if (frames.length === 0) throw new Error("no frames");
 
-  // 1. 收集所有像素用于量化调色板
-  const samplePixels: Array<[number, number, number]> = [];
+  // 1. 收集像素用于量化调色板
+  // 边采样边去重：用整型 key（r<<16|g<<8|b）代替字符串，省掉中间数组和
+  // 反复 `${r},${g},${b}` 拼接的开销。动画帧间相似度高，去重后唯一颜色有限。
+  const unique: Array<[number, number, number]> = [];
+  const seen = new Set<number>();
   for (const frame of frames) {
     const d = frame.data.data;
-    // 采样（每 4 像素取 1，减少计算量）
     for (let i = 0; i < d.length; i += 16) {
-      samplePixels.push([d[i], d[i + 1], d[i + 2]]);
-    }
-  }
-
-  // 去重
-  const seen = new Set<string>();
-  const unique: Array<[number, number, number]> = [];
-  for (const p of samplePixels) {
-    const k = `${p[0]},${p[1]},${p[2]}`;
-    if (!seen.has(k)) {
-      seen.add(k);
-      unique.push(p);
+      const key = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push([d[i], d[i + 1], d[i + 2]]);
     }
   }
 
@@ -249,23 +243,28 @@ export function encodeGif(
     palette.push([0, 0, 0]);
   }
 
-  // 建立颜色 → 索引映射
-  const colorToIdx = new Map<string, number>();
+  // 颜色 → 索引：用 24-bit RGB 查找表（16M 项 Uint8Array）代替 Map。
+  // 每像素只需一次 O(1) 数组访问，没有字符串拼接 / hash 开销。存 idx+1，
+  // 用 0 表示「未计算」；首次算出的最近色结果也写回这里，背景大片纯色 /
+  // actor 纯色填充的重复像素第二次起直接命中，省掉 O(256) 遍历。
+  const lut = new Uint8Array(1 << 24);
   for (let i = 0; i < palette.length; i++) {
-    colorToIdx.set(`${palette[i][0]},${palette[i][1]},${palette[i][2]}`, i);
+    const p = palette[i];
+    lut[(p[0] << 16) | (p[1] << 8) | p[2]] = i + 1;
   }
 
   function nearestColor(r: number, g: number, b: number): number {
-    const k = `${r},${g},${b}`;
-    const exact = colorToIdx.get(k);
-    if (exact !== undefined) return exact;
+    const key = (r << 16) | (g << 8) | b;
+    const hit = lut[key];
+    if (hit !== 0) return hit - 1;
 
     let best = 0;
     let bestDist = Infinity;
     for (let i = 0; i < palette.length; i++) {
-      const dr = r - palette[i][0];
-      const dg = g - palette[i][1];
-      const db = b - palette[i][2];
+      const p = palette[i];
+      const dr = r - p[0];
+      const dg = g - p[1];
+      const db = b - p[2];
       const dist = dr * dr + dg * dg + db * db;
       if (dist < bestDist) {
         bestDist = dist;
@@ -273,6 +272,7 @@ export function encodeGif(
         if (dist === 0) break;
       }
     }
+    lut[key] = best + 1;
     return best;
   }
 

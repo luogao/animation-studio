@@ -57,6 +57,7 @@ export function DynamicScene({ config }: Props) {
       width={config.width}
       height={config.height}
       viewBox={`0 0 ${config.width} ${config.height}`}
+      data-canvas="true"
       data-edit-mode={isEditMode ? "true" : "false"}
       onClick={handleSvgClick}
       style={{

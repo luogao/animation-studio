@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useProjectStore } from "../store/projectStore";
 import { useSelectionStore } from "../store/selectionStore";
 import { Button } from "@/components/ui/button";
-import { PanelLeft, PanelLeftClose, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { CanvasSizeControl } from "./CanvasSizeControl";
 import { ColorPalettePanel } from "./ColorPalettePanel";
 import { LlmConfigDialog } from "./LlmConfigDialog";
@@ -15,12 +15,7 @@ import { exportVideo, exportGif } from "../lib/exportMedia";
 import { toast } from "sonner";
 import { useState, useRef, useEffect } from "react";
 
-interface StudioHeaderProps {
-  chatCollapsed: boolean;
-  onToggleChat: () => void;
-}
-
-export function StudioHeader({ chatCollapsed, onToggleChat }: StudioHeaderProps) {
+export function StudioHeader() {
   const navigate = useNavigate();
   const projectTitle = useProjectStore((s) => s.projectTitle);
   const draft = useProjectStore((s) => s.draft);
@@ -73,11 +68,6 @@ export function StudioHeader({ chatCollapsed, onToggleChat }: StudioHeaderProps)
   const doExportMedia = async (format: "video" | "gif", label: string) => {
     setExportOpen(false);
     if (exportBusy) return;
-    const svg = document.querySelector<SVGSVGElement>("svg");
-    if (!svg) {
-      toast.error("找不到画布 SVG 元素");
-      return;
-    }
     const config =
       useProjectStore.getState().draft?.config ??
       useProjectStore.getState().committedConfig;
@@ -85,7 +75,7 @@ export function StudioHeader({ chatCollapsed, onToggleChat }: StudioHeaderProps)
     toast.info(`开始导出 ${label}...`);
     try {
       const fn = format === "video" ? exportVideo : exportGif;
-      await fn(svg, config, (phase) => {
+      await fn(config, (phase) => {
         toast.info(phase, { duration: 2000 });
       });
       toast.success(`${label} 导出完成`);
@@ -116,16 +106,6 @@ export function StudioHeader({ chatCollapsed, onToggleChat }: StudioHeaderProps)
         title="返回项目列表"
       >
         <ArrowLeft size={16} />
-      </Button>
-
-      {/* 面板切换 */}
-      <Button
-        onClick={onToggleChat}
-        variant="ghost"
-        size="icon-sm"
-        title={chatCollapsed ? "展开对话面板" : "收起对话面板"}
-      >
-        {chatCollapsed ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
       </Button>
 
       {/* 项目标题 + 版本 */}
