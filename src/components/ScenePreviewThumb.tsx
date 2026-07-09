@@ -15,59 +15,44 @@ interface ScenePreviewThumbProps {
 function renderActorShape(actor: SceneConfig["actors"][number], scaleX: number, scaleY: number) {
   const x = actor.x * scaleX;
   const y = actor.y * scaleY;
-  const w = (actor.width ?? 60) * scaleX;
-  const h = (actor.height ?? 60) * scaleY;
+  const minSize = 6; // 缩略图中最小可见尺寸
+  const w = Math.max((actor.width ?? 60) * scaleX, minSize);
+  const h = Math.max((actor.height ?? 60) * scaleY, minSize);
   const color = actor.color ?? "#888";
   const glow = actor.glow;
+  const sw = 1.2; // 统一描边
 
   switch (actor.type) {
-    case "circle":
+    case "circle": {
+      const cx = x + w / 2, cy = y + h / 2, r = Math.max(w / 2, 2);
       return (
         <g key={actor.id}>
           {glow && (
-            <circle
-              cx={x + w / 2}
-              cy={y + h / 2}
-              r={w / 2 + 3}
-              fill="none"
-              stroke={glow}
-              strokeWidth={1.5}
-              opacity={0.4}
-            />
+            <circle cx={cx} cy={cy} r={r + sw + 1} fill="none" stroke={glow} strokeWidth={sw} opacity={0.5} />
           )}
-          <circle cx={x + w / 2} cy={y + h / 2} r={w / 2} fill={color} />
+          <circle cx={cx} cy={cy} r={r} fill={color} stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} />
         </g>
       );
-    case "diamond":
+    }
+    case "diamond": {
+      const cx = x + w / 2, cy = y + h / 2;
+      const pts = `${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}`;
+      const glowPts = `${cx},${y - sw - 1} ${x + w + sw + 1},${cy} ${cx},${y + h + sw + 1} ${x - sw - 1},${cy}`;
       return (
         <g key={actor.id}>
-          {glow && (
-            <polygon
-              points={`${x + w / 2},${y - 3} ${x + w + 3},${y + h / 2} ${x + w / 2},${y + h + 3} ${x - 3},${y + h / 2}`}
-              fill="none"
-              stroke={glow}
-              strokeWidth={1.5}
-              opacity={0.4}
-            />
-          )}
-          <polygon
-            points={`${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`}
-            fill={color}
-          />
+          {glow && <polygon points={glowPts} fill="none" stroke={glow} strokeWidth={sw} opacity={0.5} />}
+          <polygon points={pts} fill={color} stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} />
         </g>
       );
+    }
     case "text":
-      // text actors: 用小色条代替文字
       return (
         <rect
           key={actor.id}
-          x={x}
-          y={y + h * 0.35}
-          width={w}
-          height={h * 0.3}
-          rx={1}
-          fill={color}
-          opacity={0.7}
+          x={x} y={y + h * 0.3}
+          width={Math.max(w, 8)} height={Math.max(h * 0.4, 2.5)}
+          rx={1.5} fill={color} opacity={0.8}
+          stroke="rgba(255,255,255,0.08)" strokeWidth={0.5}
         />
       );
     case "box":
@@ -76,19 +61,10 @@ function renderActorShape(actor: SceneConfig["actors"][number], scaleX: number, 
       return (
         <g key={actor.id}>
           {glow && (
-            <rect
-              x={x - 3}
-              y={y - 3}
-              width={w + 6}
-              height={h + 6}
-              fill="none"
-              stroke={glow}
-              strokeWidth={1.5}
-              opacity={0.4}
-              rx={2}
-            />
+            <rect x={x - sw - 1} y={y - sw - 1} width={w + sw * 2 + 2} height={h + sw * 2 + 2}
+              fill="none" stroke={glow} strokeWidth={sw} opacity={0.5} rx={2} />
           )}
-          <rect x={x} y={y} width={w} height={h} fill={color} rx={2} />
+          <rect x={x} y={y} width={w} height={h} fill={color} stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} rx={2} />
         </g>
       );
   }

@@ -172,7 +172,7 @@ export default function HomePage() {
                     {/* 预览条 */}
                     {p.preview_bg && (
                       <div
-                        className="h-12 shrink-0 border-b border-foreground/20 flex items-center justify-center relative"
+                        className="h-16 shrink-0 border-b border-foreground/20 flex items-center justify-center relative"
                         style={{ backgroundColor: p.preview_bg }}
                       >
                         {p.preview_width && p.preview_height && (

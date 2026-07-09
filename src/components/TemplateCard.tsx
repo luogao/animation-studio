@@ -61,7 +61,7 @@ export function TemplateCard({ template }: TemplateCardProps) {
       className="text-left group cursor-pointer border-2 border-foreground bg-card hover:bg-muted transition-colors p-0 overflow-hidden flex flex-col"
     >
       {/* 场景缩略预览 */}
-      <div className="h-28 shrink-0 overflow-hidden border-b border-foreground/20">
+      <div className="h-40 shrink-0 overflow-hidden border-b border-foreground/20">
         <ScenePreviewThumb config={template.config} />
       </div>
 

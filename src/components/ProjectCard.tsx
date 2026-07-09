@@ -108,7 +108,7 @@ export function ProjectCard({ project, onDeleted }: ProjectCardProps) {
         {/* 预览条 */}
         {project.preview_bg && (
           <div
-            className="h-14 shrink-0 border-b border-foreground/20 flex items-center justify-center relative"
+            className="h-20 shrink-0 border-b border-foreground/20 flex items-center justify-center relative"
             style={{ backgroundColor: project.preview_bg }}
           >
             <div className="absolute inset-0 flex items-center justify-center">
