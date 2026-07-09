@@ -12,7 +12,7 @@
 // ============================================================
 
 import type { ReactNode } from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
@@ -26,6 +26,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { MarkdownText } from "./MarkdownText";
 import { ToolCallCard } from "./ToolCallCard";
 import { SelectionTags } from "./SelectionTags";
+import { FontProposalPicker } from "./FontProposalPicker";
+import { parseFontResult, type GoogleFont } from "../lib/googleFonts";
+import { ProposalStaleContext } from "./proposalLock";
 
 export function ChatPanel({ children }: { children?: ReactNode }) {
   const runtime = useStudioRuntime();
@@ -53,7 +56,11 @@ export function ChatPanel({ children }: { children?: ReactNode }) {
 
             <ThreadPrimitive.Messages>
               {({ message }) =>
-                message.role === "user" ? <UserBubble /> : <AssistantBubble />
+                message.role === "user" ? (
+                  <UserBubble />
+                ) : (
+                  <AssistantBubble messageId={message.id} />
+                )
               }
             </ThreadPrimitive.Messages>
           </ThreadPrimitive.Viewport>
@@ -103,20 +110,49 @@ function UserBubble() {
   );
 }
 
-function AssistantBubble() {
+function AssistantBubble({ messageId }: { messageId: string }) {
+  // 该消息里所有 search_google_fonts 调用的返回结果，合并去重后渲染成
+  // 单个选择器——避免 agent 一轮里搜多次时刷出多个各自带确认按钮的选择器。
+  const toolCalls = useAgentStore(
+    (s) => s.chatMessages.find((m) => m.id === messageId)?.toolCalls
+  );
+  // 本消息是否「已过期」：不是对话最后一条消息时为 true。刷新后仍成立
+  // （派生自持久化的消息列表），用来把历史提案选择器锁成不可点击。
+  const isStale = useAgentStore(
+    (s) => s.chatMessages[s.chatMessages.length - 1]?.id !== messageId
+  );
+  const fontOptions = useMemo<GoogleFont[]>(() => {
+    if (!toolCalls) return [];
+    const seen = new Set<string>();
+    const out: GoogleFont[] = [];
+    for (const tc of toolCalls) {
+      if (!tc.toolName?.includes("search_google_fonts")) continue;
+      for (const f of parseFontResult(tc.resultContent)) {
+        if (f.family && !seen.has(f.family)) {
+          seen.add(f.family);
+          out.push(f);
+        }
+      }
+    }
+    return out;
+  }, [toolCalls]);
+
   return (
-    <MessagePrimitive.Root className="max-w-[85%] px-3 py-2 text-sm leading-relaxed self-start bg-card text-card-foreground border-2 border-foreground">
-      <MessagePrimitive.Content
-        components={{
-          // 流式占位：根据 phase 显示 "思考中" / "调用工具" / 默认 "…"
-          Empty: PhaseEmpty,
-          // markdown 渲染（含流式 caret）
-          Text: MarkdownText,
-          // 所有工具调用卡片走同一个 Fallback
-          tools: { Fallback: ToolCallCard },
-        }}
-      />
-    </MessagePrimitive.Root>
+    <ProposalStaleContext.Provider value={isStale}>
+      <MessagePrimitive.Root className="max-w-[85%] px-3 py-2 text-sm leading-relaxed self-start bg-card text-card-foreground border-2 border-foreground">
+        <MessagePrimitive.Content
+          components={{
+            // 流式占位：根据 phase 显示 "思考中" / "调用工具" / 默认 "…"
+            Empty: PhaseEmpty,
+            // markdown 渲染（含流式 caret）
+            Text: MarkdownText,
+            // 所有工具调用卡片走同一个 Fallback
+            tools: { Fallback: ToolCallCard },
+          }}
+        />
+        {fontOptions.length > 0 && <FontProposalPicker fonts={fontOptions} />}
+      </MessagePrimitive.Root>
+    </ProposalStaleContext.Provider>
   );
 }
 

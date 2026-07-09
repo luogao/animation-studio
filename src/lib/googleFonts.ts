@@ -98,3 +98,19 @@ export function getFontCategories(): FontCategory[] {
   const set = new Set(POPULAR_FONTS.map((f) => f.category));
   return Array.from(set).sort();
 }
+
+/**
+ * 解析 search_google_fonts 工具的单次返回内容（JSON 字符串或已解析对象），
+ * 提取其中的 fonts 数组。用于把同一 assistant 消息里多次调用的结果
+ * 合并去重，统一渲染成一个选择器。
+ */
+export function parseFontResult(content: unknown): GoogleFont[] {
+  try {
+    const data =
+      typeof content === "string" ? JSON.parse(content) : content;
+    if (data && Array.isArray(data.fonts)) return data.fonts as GoogleFont[];
+  } catch {
+    // 解析失败 → 视为无结果
+  }
+  return [];
+}
