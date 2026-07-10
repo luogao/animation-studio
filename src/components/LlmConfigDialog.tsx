@@ -26,11 +26,24 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { refreshLlmConfigStatus } from "@/lib/llmConfigStatus";
 
 interface LlmConfig {
   model: string;
   apiKey: string;
   baseUrl: string;
+}
+
+// ------------------------------------------------------------
+// 外部触发打开：派发全局事件，Dialog 内监听。
+// 用于「未配置 LLM 时发对话被拦截」→ 自动弹出配置框。
+// 用 window 事件而非 Zustand：配置态本就不在 store，事件总线最轻量。
+// ------------------------------------------------------------
+export const OPEN_LLM_CONFIG_EVENT = "open-llm-config";
+
+/** 从任意位置调用，打开 LLM 配置对话框 */
+export function openLlmConfig(): void {
+  window.dispatchEvent(new CustomEvent(OPEN_LLM_CONFIG_EVENT));
 }
 
 export function LlmConfigDialog() {
@@ -58,6 +71,13 @@ export function LlmConfigDialog() {
     }
   }, [open]);
 
+  // 监听外部「打开配置」事件（发对话被拦截时触发）
+  useEffect(() => {
+    const handler = () => setOpen(true);
+    window.addEventListener(OPEN_LLM_CONFIG_EVENT, handler);
+    return () => window.removeEventListener(OPEN_LLM_CONFIG_EVENT, handler);
+  }, []);
+
   const handleSave = async () => {
     if (!config.model.trim()) {
       toast.error("模型名称不能为空");
@@ -75,6 +95,8 @@ export function LlmConfigDialog() {
         throw new Error(error ?? `HTTP ${res.status}`);
       }
       toast.success("LLM 配置已保存");
+      // 刷新就绪状态缓存，让发对话拦截立即生效
+      void refreshLlmConfigStatus();
       setOpen(false);
     } catch (err) {
       toast.error(

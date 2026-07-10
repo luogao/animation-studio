@@ -3,6 +3,9 @@ import { useAgentStore, type RunState, type ChatItem } from "../store/agentStore
 import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
 import type { SceneConfig } from "../types/scene";
 import { parsePalettes } from "../lib/colorPalette";
+import { isLlmConfigured } from "../lib/llmConfigStatus";
+import { openLlmConfig } from "../components/LlmConfigDialog";
+import { toast } from "sonner";
 
 // ============================================================
 // 消息协议（与 server/wsHandler.ts 对应）
@@ -22,6 +25,8 @@ interface ServerMessage {
     delta?: string;
     config?: SceneConfig;
     message?: string;
+    // error 的结构化错误码（如 LLM_NOT_CONFIGURED），前端据此识别并引导
+    code?: string;
     // tool_use
     toolCallId?: string;
     toolName?: string;
@@ -220,11 +225,26 @@ function dispatchToStore(msg: ServerMessage): void {
     case "error": {
       agent.setStreaming(false);
       agent.finalizeRunningToolCalls();
-      agent.addMessage({
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: "错误:" + (msg.payload?.message ?? ""),
-      });
+      // 兜底：后端识别出未配置 LLM（绕过前端拦截的情况，如配置被清空）
+      // → 展示引导话术，并主动弹出配置框。
+      if (msg.payload?.code === "LLM_NOT_CONFIGURED") {
+        toast.error("尚未配置 LLM", {
+          description: "请点击右上角齿轮填写 Base URL / API Key / 模型名",
+        });
+        openLlmConfig();
+        agent.addMessage({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "⚠️ 尚未配置 LLM，无法对话。\n\n请点击右上角 ⚙️ 齿轮图标，填写 **Base URL / API Key / 模型名** 后保存，再重新发送消息。",
+        });
+      } else {
+        agent.addMessage({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "错误:" + (msg.payload?.message ?? ""),
+        });
+      }
       break;
     }
 
@@ -285,6 +305,18 @@ export async function sendMessage(text: string): Promise<void> {
 
   if (!project.projectId) {
     throw new Error("no project selected; create or load one first");
+  }
+
+  // 前端拦截：明确未配置 LLM 时，不发 WS、不 push 占位消息，
+  // 直接弹配置框 + toast。避免后端跑一遍再报错、污染对话。
+  // 注意 isLlmConfigured() 在 unknown 状态乐观返回 true，
+  // 所以这里只在「确定没配置」时拦，其余靠后端兜底。
+  if (!isLlmConfigured()) {
+    toast.error("尚未配置 LLM", {
+      description: "请先填写 Base URL / API Key / 模型名",
+    });
+    openLlmConfig();
+    return;
   }
 
   // 1. 自动提交已有 draft（plan spec）
