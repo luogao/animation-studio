@@ -1,6 +1,7 @@
 import type { WebSocket } from "ws";
 import { runAgent } from "./agent.js";
 import { insertMessage } from "./db/messages.js";
+import { readLlmConfig } from "./llm-config.js";
 import type { SceneConfig } from "../src/types/scene.js";
 import {
   subscribe,
@@ -92,6 +93,22 @@ export function handleWsMessage(ws: WebSocket, raw: string): void {
         send(ws, {
           type: "error",
           payload: { message: "该项目已有 agent 在运行，请等当前轮次结束" },
+        });
+        return;
+      }
+      // 配置兜底：未配置 LLM（缺 apiKey 或 model）时直接拒绝，不让 CLI 子进程
+      // 拿空 token 去跑出一个含糊的 "process exited" 错误。
+      // 返回结构化 code 让前端能识别并弹出配置引导（而非当成普通错误展示）。
+      // 注意：此处在 user 消息入库之前，未配置不会污染对话历史。
+      const llm = readLlmConfig();
+      if (!llm.apiKey || !llm.model) {
+        send(ws, {
+          type: "error",
+          payload: {
+            message:
+              "尚未配置 LLM。请点击右上角齿轮设置 Base URL / API Key / 模型名，保存后再对话。",
+            code: "LLM_NOT_CONFIGURED",
+          },
         });
         return;
       }

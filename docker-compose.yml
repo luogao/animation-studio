@@ -1,0 +1,76 @@
+# ============================================================
+# docker-compose.yml — Animation Studio 一键部署
+#
+# 数据持久化（重点）：
+#   - studio-data 命名卷 → /app/.data
+#     包含 studio.db（SQLite 主库）+ sessions/（Claude Agent SDK 状态根：
+#     会话 JSONL、credentials、todos 等）。容器删除/重建后数据不丢。
+#
+# LLM 配置（两种方式，二选一）：
+#
+#   方式 A（推荐，默认）：首次启动后在浏览器 UI 里填配置
+#     - 无需提前准备任何文件。
+#     - 打开页面 → 点右上角设置图标 → 填 base_url / API key / 模型 → 保存。
+#     - 配置写到 /app/.claude/setting.agent.json（在命名卷里持久化）。
+#     - 下面的 HOST_SETTINGS_FILE 留空即可。
+#
+#   方式 B：已有 setting.agent.json，直接只读注入（跳过 UI）
+#     - 在 .env 里设 HOST_SETTINGS_FILE 指向宿主机文件路径。
+#     - 该文件会只读覆盖容器内同名文件，UI 里的保存按钮此时写不进去
+#       （只读挂载），但 agent 能正常用。
+#
+# 用法：
+#   1. cp .env.example .env（可选，默认值已可用）
+#   2. docker compose up -d --build
+#   3. 访问 http://localhost:${PORT:-5174}
+#   4. 若用方式 A：首次进入页面点设置图标填 LLM 配置
+# ============================================================
+
+services:
+  animation-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: animation-studio:latest
+    container_name: animation-studio
+    restart: unless-stopped
+
+    ports:
+      - "${PORT:-5174}:5174"
+
+    volumes:
+      # —— 持久化数据（SQLite + Agent SDK 会话状态）——
+      - studio-data:/app/.data
+      # —— LLM 配置持久化（setting.agent.json，首次在 UI 里填后写入这里）——
+      - studio-config:/app/.claude
+      # —— 可选：方式 B，已有配置文件只读注入 ——
+      # 若想跳过 UI、直接用宿主机现成的 setting.agent.json，取消下面注释，
+      # 把路径改成你的文件（只读）。注意：只读挂载后 UI 里的保存写不进去。
+      # - ./.claude/setting.agent.json:/app/.claude/setting.agent.json:ro
+
+    environment:
+      # 端口（容器内监听，与 Dockerfile EXPOSE 一致）
+      PORT: 5174
+      NODE_ENV: production
+      # LLM 配置文件路径（容器内固定）
+      CLAUDE_SETTINGS_FILE: /app/.claude/setting.agent.json
+      # 数据库 + 会话状态根
+      STUDIO_DB_PATH: /app/.data/studio.db
+      CLAUDE_CONFIG_DIR: /app/.data/sessions
+      # 可选：直接用环境变量覆盖模型（优先级：settings 文件 > 此处 > 代码默认）
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-}
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5174/api/projects',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  studio-data:
+    # 命名卷：docker volume 持久化，跨容器重建保留
+    name: animation-studio-data
+  studio-config:
+    # LLM 配置持久化卷（setting.agent.json）
+    name: animation-studio-config
