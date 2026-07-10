@@ -62,32 +62,36 @@ export function createProject(title?: string): ProjectRow {
 // 列出所有项目（按更新时间倒序）
 // ------------------------------------------------------------
 
-export function listProjects(): (ProjectRow & {
+export interface ProjectListItem {
+  id: string;
+  title: string;
+  created_at: number;
+  updated_at: number;
   head_sequence: number | null;
   draft_id: string | null;
-  preview_bg: string | null;
-  preview_width: number | null;
-  preview_height: number | null;
-})[] {
-  return db
+  // head committed 版本的完整 config，供卡片渲染真实场景缩略图
+  config: SceneConfig | null;
+}
+
+export function listProjects(): ProjectListItem[] {
+  const rows = db
     .prepare(
       `SELECT
-         p.*,
+         p.id, p.title, p.created_at, p.updated_at,
          (SELECT MAX(v.sequence) FROM versions v WHERE v.project_id = p.id AND v.status = 'committed') AS head_sequence,
          (SELECT v.id FROM versions v WHERE v.project_id = p.id AND v.status = 'draft' LIMIT 1) AS draft_id,
-         (SELECT json_extract(v.config_json, '$.background') FROM versions v WHERE v.project_id = p.id AND v.status = 'committed' ORDER BY v.sequence DESC LIMIT 1) AS preview_bg,
-         (SELECT json_extract(v.config_json, '$.width') FROM versions v WHERE v.project_id = p.id AND v.status = 'committed' ORDER BY v.sequence DESC LIMIT 1) AS preview_width,
-         (SELECT json_extract(v.config_json, '$.height') FROM versions v WHERE v.project_id = p.id AND v.status = 'committed' ORDER BY v.sequence DESC LIMIT 1) AS preview_height
+         (SELECT v.config_json FROM versions v WHERE v.project_id = p.id AND v.status = 'committed' ORDER BY v.sequence DESC LIMIT 1) AS config_json
        FROM projects p
        ORDER BY p.updated_at DESC`
     )
-    .all() as (ProjectRow & {
-    head_sequence: number | null;
-    draft_id: string | null;
-    preview_bg: string | null;
-    preview_width: number | null;
-    preview_height: number | null;
-  })[];
+    .all() as (Omit<ProjectListItem, "config"> & {
+      config_json: string | null;
+    })[];
+
+  return rows.map(({ config_json, ...rest }) => ({
+    ...rest,
+    config: config_json ? (JSON.parse(config_json) as SceneConfig) : null,
+  }));
 }
 
 // ------------------------------------------------------------

@@ -9,6 +9,7 @@ import { ProjectCard } from "../components/ProjectCard";
 import { useProjectStore } from "../store/projectStore";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import type { SceneConfig } from "../types/scene";
 
 interface ProjectListItem {
   id: string;
@@ -16,6 +17,7 @@ interface ProjectListItem {
   updated_at: number;
   head_sequence: number | null;
   draft_id: string | null;
+  config: SceneConfig | null;
 }
 
 export default function ProjectListPage() {
