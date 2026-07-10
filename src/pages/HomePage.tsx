@@ -6,11 +6,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppNav } from "../components/AppNav";
 import { TemplateCard } from "../components/TemplateCard";
+import { ScenePreviewThumb } from "../components/ScenePreviewThumb";
 import { DEMO_TEMPLATES } from "../data/templates";
 import { useProjectStore } from "../store/projectStore";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowRight, Sparkles } from "lucide-react";
+import type { SceneConfig } from "../types/scene";
 
 interface ProjectListItem {
   id: string;
@@ -18,9 +20,7 @@ interface ProjectListItem {
   updated_at: number;
   head_sequence: number | null;
   draft_id: string | null;
-  preview_bg?: string | null;
-  preview_width?: number | null;
-  preview_height?: number | null;
+  config: SceneConfig | null;
 }
 
 function timeAgo(ms: number): string {
@@ -169,18 +169,13 @@ export default function HomePage() {
                     disabled={busy}
                     className="text-left border-2 border-foreground bg-card hover:bg-muted transition-colors cursor-pointer group overflow-hidden flex flex-col p-0"
                   >
-                    {/* 预览条 */}
-                    {p.preview_bg && (
-                      <div
-                        className="h-16 shrink-0 border-b border-foreground/20 flex items-center justify-center relative"
-                        style={{ backgroundColor: p.preview_bg }}
-                      >
-                        {p.preview_width && p.preview_height && (
-                          <span className="absolute bottom-0.5 right-1.5 text-[8px] font-mono text-white/30">
-                            {p.preview_width}×{p.preview_height}
-                          </span>
-                        )}
+                    {/* 场景缩略预览 */}
+                    {p.config ? (
+                      <div className="h-20 shrink-0 overflow-hidden border-b border-foreground/20">
+                        <ScenePreviewThumb config={p.config} />
                       </div>
+                    ) : (
+                      <div className="h-20 shrink-0 border-b border-foreground/20 bg-muted/30" />
                     )}
                     <div className="p-3 flex flex-col gap-1">
                       <h3 className="font-display text-sm font-bold text-foreground group-hover:text-primary transition-colors truncate">

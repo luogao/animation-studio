@@ -11,13 +11,17 @@ interface ScenePreviewThumbProps {
   config: SceneConfig;
 }
 
-/** 根据 actor type 返回简化形状的 SVG 元素 */
-function renderActorShape(actor: SceneConfig["actors"][number], scaleX: number, scaleY: number) {
-  const x = actor.x * scaleX;
-  const y = actor.y * scaleY;
+/**
+ * 根据 actor type 返回简化形状的 SVG 元素。
+ * 坐标直接用场景坐标系（与 viewBox = 0 0 width height 对齐），
+ * 由外层 SVG 的 preserveAspectRatio 统一缩放，杜绝形变/错位。
+ */
+function renderActorShape(actor: SceneConfig["actors"][number], scale: number) {
+  const x = actor.x * scale;
+  const y = actor.y * scale;
   const minSize = 6; // 缩略图中最小可见尺寸
-  const w = Math.max((actor.width ?? 60) * scaleX, minSize);
-  const h = Math.max((actor.height ?? 60) * scaleY, minSize);
+  const w = Math.max((actor.width ?? 60) * scale, minSize);
+  const h = Math.max((actor.height ?? 60) * scale, minSize);
   const color = actor.color ?? "#888";
   const glow = actor.glow;
   const sw = 1.2; // 统一描边
@@ -71,30 +75,31 @@ function renderActorShape(actor: SceneConfig["actors"][number], scaleX: number, 
 }
 
 export function ScenePreviewThumb({ config }: ScenePreviewThumbProps) {
-  // 计算缩放比例，把整个场景缩放到约 300x170 的 viewBox
-  const TARGET_W = 300;
-  const scaleX = TARGET_W / config.width;
-  const scaleY = (TARGET_W / config.width) * (config.height / config.width);
+  // viewBox 直接使用场景原始尺寸 → 坐标系一致，元素天然落在正确位置。
+  // preserveAspectRatio="xMidYMid meet" 把整个场景等比 contain 到容器并居中。
+  // 外层 div 提供背景色填充容器在 letterbox 时的空白区域。
+  const W = config.width;
+  const H = config.height;
+  const scale = 1; // 坐标系已对齐，缩放交给 SVG 属性
 
   // 最多渲染 15 个 actor（预览不需要全部）
   const previewActors = config.actors.slice(0, 15);
 
   return (
-    <svg
-      viewBox={`0 0 ${TARGET_W} ${TARGET_W * (config.height / config.width)}`}
+    <div
       className="w-full h-full"
-      preserveAspectRatio="xMidYMid slice"
+      style={{ backgroundColor: config.background }}
     >
-      {/* 背景 */}
-      <rect
-        x={0}
-        y={0}
-        width={TARGET_W}
-        height={TARGET_W * (config.height / config.width)}
-        fill={config.background}
-      />
-      {/* 演员 */}
-      {previewActors.map((actor) => renderActorShape(actor, scaleX, scaleY))}
-    </svg>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-full block"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {/* 背景（铺满整个场景坐标系；外层 div 负责填充 letterbox 空白） */}
+        <rect x={0} y={0} width={W} height={H} fill={config.background} />
+        {/* 演员 */}
+        {previewActors.map((actor) => renderActorShape(actor, scale))}
+      </svg>
+    </div>
   );
 }
