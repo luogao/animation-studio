@@ -43,6 +43,7 @@ import {
   endRun,
   updatePhase,
   appendRunText,
+  appendRunThinking,
   getRun,
 } from "./runRegistry.js";
 import { readSettingsFile } from "./llm-config.js";
@@ -275,6 +276,8 @@ const sceneConfigShape = {
 
 export interface AgentCallbacks {
   onTextDelta: (delta: string) => void;
+  // thinking_delta（模型推理过程）—— 与 onTextDelta 对称，前端渲染「思考过程」模块
+  onThinkingDelta: (delta: string) => void;
   onConfigUpdate: (config: SceneConfig) => void;
   onDone: () => void;
   onError: (error: string) => void;
@@ -302,7 +305,7 @@ type SDKYieldEvent = {
   type: "stream_event";
   event: {
     type: string;
-    delta?: { type: string; text?: string };
+    delta?: { type: string; text?: string; thinking?: string };
   };
 };
 type SDKYieldAssistantMessage = {
@@ -710,6 +713,13 @@ ${JSON.stringify(currentConfig, null, 2)}
     // 渲染成独立 <p>，markdown 语法被切碎失效）。
     let firstDelta = true;
     let pendingSegmentSep = false;
+    // thinking 分段标志（与 text 对称）：
+    // firstThinking —— 本轮第一个 thinking_delta 不加前缀；
+    // pendingThinkingSep —— assistant 消息 yield 后置 true，下一个 turn 的首个
+    // thinking_delta 前置 "\n\n"，把多 turn 的思考块在同一条消息内分开。
+    // 同一 thinking 块内的连续 delta 绝不加前缀（否则字符间被 \n\n 断开）。
+    let firstThinking = true;
+    let pendingThinkingSep = false;
     // 累积本轮所有工具调用（多个 assistant turn 都算），done 时随 assistant
     // 消息一起入库 —— 这样刷新页面后 ToolCallCard 仍然能渲染。
     // tool_use 块 → push running；tool_result 块 → 找到对应条目更新状态。
@@ -741,6 +751,24 @@ ${JSON.stringify(currentConfig, null, 2)}
             firstDelta = false;
             pendingSegmentSep = false;
           }
+          // thinking_delta：模型推理过程，转发给前端渲染「思考过程」模块。
+          // phase 仍保持 thinking（thinking 在 text 之前），不动 phase。
+          if (
+            evt.type === "content_block_delta" &&
+            evt.delta?.type === "thinking_delta" &&
+            evt.delta.thinking
+          ) {
+            const prefix = firstThinking
+              ? ""
+              : pendingThinkingSep
+                ? "\n\n"
+                : "";
+            const piece = prefix + evt.delta.thinking;
+            callbacks.onThinkingDelta(piece);
+            appendRunThinking(projectId, piece);
+            firstThinking = false;
+            pendingThinkingSep = false;
+          }
           // input_json_delta（工具 args 流式 partial）刻意不转发 ——
           // 等到 assistant 消息里的 tool_use 块组装完成再一次性发。
           break;
@@ -771,11 +799,12 @@ ${JSON.stringify(currentConfig, null, 2)}
               });
             }
             // text 块已通过 stream_event 流过 —— 跳过
-            // thinking 块 —— 跳过（不展示）
+            // thinking 块也已在 stream_event 阶段以 thinking_delta 流过 —— 跳过
           }
-          // assistant 消息结束：若后续还有 text_delta（tool_result 之后的
-          // 新一轮 assistant 文本），用空行与上一段分开
+          // assistant 消息结束：若后续还有 text_delta / thinking_delta
+          // （tool_result 之后新一轮 assistant），用空行与上一段分开
           pendingSegmentSep = true;
+          pendingThinkingSep = true;
           break;
         }
 
@@ -841,14 +870,18 @@ ${JSON.stringify(currentConfig, null, 2)}
     // ── 持久化 assistant 消息（服务端负责，WS 断开也不丢）──
     // 文本累加在 RunState.streamedText 里，这里读出来一次性入库。
     // 工具调用累积在 accumulatedToolCalls，随消息一起持久化 —— 刷新后卡片不丢。
-    const finalText = getRun(projectId)?.streamedText ?? "";
-    if (finalText.trim()) {
+    // 思考过程累加在 RunState.thinkingText —— 随消息持久化，刷新后「思考过程」不丢。
+    const finalRun = getRun(projectId);
+    const finalText = finalRun?.streamedText ?? "";
+    const finalThinking = finalRun?.thinkingText ?? "";
+    if (finalText.trim() || finalThinking.trim()) {
       try {
         insertMessage({
           projectId,
           role: "assistant",
           content: finalText,
           toolCalls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+          thinking: finalThinking.trim() ? finalThinking : undefined,
         });
       } catch (err) {
         // 写库失败不让 done 不发——但前端 reload 后会缺这条消息

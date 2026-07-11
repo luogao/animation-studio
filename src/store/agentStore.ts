@@ -40,6 +40,7 @@ export interface ChatItem {
   content: string; // 文本内容（DB 持久化）
   toolCalls?: ToolCallRecord[]; // 持久化：done 时随 assistant 消息入库
   attachments?: MessageAttachment[]; // 持久化：user 消息携带的图片附件（messages.attachments_json）
+  thinking?: string; // 持久化：模型思考过程（thinking_delta 累加，DB messages.thinking）
 }
 
 // ── RunState：服务端 broadcast 过来的 agent 运行态 ──
@@ -58,6 +59,7 @@ export interface RunState {
   phase: RunPhase;
   startedAt: number;
   streamedText: string; // 服务端累加的当前文本（重连恢复时用）
+  thinkingText: string; // 服务端累加的思考过程（重连恢复时用）
   currentTool?: {
     toolCallId: string;
     toolName: string;
@@ -82,6 +84,8 @@ interface AgentState {
   // ── actions ──
   addMessage: (msg: ChatItem) => void;
   appendDelta: (delta: string) => void;
+  // 思考过程增量：追加到最后一条 assistant 消息的 thinking 字段
+  appendThinkingDelta: (delta: string) => void;
   setStreaming: (v: boolean) => void;
   clearChat: () => void;
   clearForProject: (id: string) => void;
@@ -94,6 +98,8 @@ interface AgentState {
   // 重连恢复专用：如果服务端 RunState.streamedText 比本地最后一条 assistant
   // 内容更长/不同，用服务端的覆盖本地（避免漏字）。
   syncStreamingText: (text: string) => void;
+  // 重连恢复专用：思考过程同 streamedText（服务端 thinkingText 为权威来源）。
+  syncThinkingText: (text: string) => void;
 
   // ── tool-call 卡片 ──
   appendToolCall: (call: ToolCallRecord) => void;
@@ -145,6 +151,21 @@ export const useAgentStore = create<AgentState>((set) => ({
       return { chatMessages: updatedMessages };
     }),
 
+  // 思考过程增量：追加到最后一条 assistant 消息的 thinking 字段（与 appendDelta 对称）
+  appendThinkingDelta: (delta) =>
+    set((s) => {
+      if (!delta) return s;
+      const messages = s.chatMessages;
+      const last = messages[messages.length - 1];
+      if (!last || last.role !== "assistant") return s;
+      const updatedMessages = [...messages];
+      updatedMessages[updatedMessages.length - 1] = {
+        ...last,
+        thinking: (last.thinking ?? "") + delta,
+      };
+      return { chatMessages: updatedMessages };
+    }),
+
   setStreaming: (isStreaming) => set({ isStreaming }),
 
   clearChat: () =>
@@ -167,7 +188,8 @@ export const useAgentStore = create<AgentState>((set) => ({
         (m) =>
           m.content ||
           (m.toolCalls && m.toolCalls.length > 0) ||
-          (m.attachments && m.attachments.length > 0)
+          (m.attachments && m.attachments.length > 0) ||
+          m.thinking
       ),
       isStreaming: false,
       runState: null,
@@ -200,6 +222,25 @@ export const useAgentStore = create<AgentState>((set) => ({
         updatedMessages[updatedMessages.length - 1] = {
           ...last,
           content: text,
+        };
+        return { chatMessages: updatedMessages };
+      }
+      return s;
+    }),
+
+  syncThinkingText: (text) =>
+    set((s) => {
+      if (!text) return s;
+      const messages = s.chatMessages;
+      const last = messages[messages.length - 1];
+      // 没有最后一条 assistant → 不新建占位（思考永远依附于一条 assistant 消息，
+      // 该消息会由 syncStreamingText / appendDelta 创建）
+      if (!last || last.role !== "assistant") return s;
+      if ((last.thinking ?? "") !== text) {
+        const updatedMessages = [...messages];
+        updatedMessages[updatedMessages.length - 1] = {
+          ...last,
+          thinking: text,
         };
         return { chatMessages: updatedMessages };
       }

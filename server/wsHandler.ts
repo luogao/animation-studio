@@ -21,6 +21,7 @@ export type MessageType =
   | "export"
   | "subscribe" // 新增：client 订阅某 project 的状态广播
   | "stream"
+  | "thinking_delta" // 新增：模型思考过程增量（与 stream 对称）
   | "config_update"
   | "done"
   | "error"
@@ -144,6 +145,8 @@ export function handleWsMessage(ws: WebSocket, raw: string): void {
           // 而非单播给 originating ws —— 多 tab / 刷新重连都能收到。
           onTextDelta: (delta) =>
             broadcast(projectId, { type: "stream", payload: { delta } }),
+          onThinkingDelta: (delta) =>
+            broadcast(projectId, { type: "thinking_delta", payload: { delta } }),
           onConfigUpdate: (newConfig) =>
             broadcast(projectId, {
               type: "config_update",

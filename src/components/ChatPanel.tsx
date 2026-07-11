@@ -19,7 +19,7 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
 } from "@assistant-ui/react";
-import { ChevronLeft, ChevronRight, ImagePlus } from "lucide-react";
+import { Brain, ChevronDown, ChevronLeft, ChevronRight, ImagePlus } from "lucide-react";
 import { toast } from "sonner";
 import { useStudioRuntime } from "../lib/assistantRuntime";
 import { useAgentStore } from "../store/agentStore";
@@ -355,19 +355,23 @@ function AssistantBubble({ messageId }: { messageId: string }) {
 
   return (
     <ProposalStaleContext.Provider value={isStale}>
-      <MessagePrimitive.Root className="max-w-[85%] px-3 py-2 text-sm leading-relaxed self-start bg-card text-card-foreground border-2 border-foreground">
-        <MessagePrimitive.Content
-          components={{
-            // 流式占位：根据 phase 显示 "思考中" / "调用工具" / 默认 "…"
-            Empty: PhaseEmpty,
-            // markdown 渲染（含流式 caret）
-            Text: MarkdownText,
-            // 所有工具调用卡片走同一个 Fallback
-            tools: { Fallback: ToolCallCard },
-          }}
-        />
-        {fontOptions.length > 0 && <FontProposalPicker fonts={fontOptions} />}
-      </MessagePrimitive.Root>
+      <div className="flex flex-col gap-1 items-start self-start w-full max-w-[85%]">
+        {/* 思考过程模块：渲染在气泡上方。无 thinking 文本时不占位 */}
+        <ThinkingBlock messageId={messageId} />
+        <MessagePrimitive.Root className="w-full px-3 py-2 text-sm leading-relaxed bg-card text-card-foreground border-2 border-foreground">
+          <MessagePrimitive.Content
+            components={{
+              // 流式占位：根据 phase 显示 "思考中" / "调用工具" / 默认 "…"
+              Empty: PhaseEmpty,
+              // markdown 渲染（含流式 caret）
+              Text: MarkdownText,
+              // 所有工具调用卡片走同一个 Fallback
+              tools: { Fallback: ToolCallCard },
+            }}
+          />
+          {fontOptions.length > 0 && <FontProposalPicker fonts={fontOptions} />}
+        </MessagePrimitive.Root>
+      </div>
     </ProposalStaleContext.Provider>
   );
 }
@@ -376,22 +380,79 @@ function AssistantBubble({ messageId }: { messageId: string }) {
 // Phase-aware UI
 // ============================================================
 
+// 思考过程模块：可折叠，渲染在 assistant 气泡上方。
+// 数据来自 ChatItem.thinking（thinking_delta 累加 / DB messages.thinking 持久化）。
+// - 流式中（本条是当前 streaming 的最后一条 assistant）：默认展开 + 脉动指示
+// - 完成：默认折叠，点击 header 展开
+// 无 thinking 文本 → 不渲染（不占位）。
+function ThinkingBlock({ messageId }: { messageId: string }) {
+  const thinking = useAgentStore(
+    (s) => s.chatMessages.find((m) => m.id === messageId)?.thinking
+  );
+  const isStreaming = useAgentStore((s) => s.isStreaming);
+  const isLastAssistant = useAgentStore(
+    (s) => s.chatMessages[s.chatMessages.length - 1]?.id === messageId
+  );
+  // 这条消息是否正处于活跃流式（思考中）
+  const isActive = isStreaming && isLastAssistant;
+
+  // 活跃流式时默认展开；流式结束（isActive true→false）自动折叠
+  const [open, setOpen] = useState(isActive);
+  const prevActive = useRef(isActive);
+  useEffect(() => {
+    if (prevActive.current && !isActive) setOpen(false);
+    prevActive.current = isActive;
+  }, [isActive]);
+
+  if (!thinking) return null;
+
+  return (
+    <div className="w-full border-l-2 border-foreground/30 bg-muted/30 rounded-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-1.5 px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted/60 transition-colors"
+      >
+        {isActive ? (
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+        ) : null}
+        <Brain className="h-3.5 w-3.5 shrink-0" />
+        <span className="font-medium">
+          {isActive ? "思考中…" : "思考过程"}
+        </span>
+        <ChevronDown
+          className={`h-3.5 w-3.5 ml-auto transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      {open && (
+        <div className="px-2.5 pb-2 pt-0.5 text-xs leading-relaxed text-muted-foreground/90 whitespace-pre-wrap break-words">
+          {thinking}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // 空助手气泡的占位：读 runState 显示阶段化提示
 // assistant-ui 的 ConditionalEmpty 机制：当消息最后一个 part 非 text/reasoning 时
 // 会强制渲染 Empty。用 status prop（assistant-ui 直接传入）判断是否 running。
+// 注意：hooks 必须在所有条件 return 之前调用 —— runState 一次取全。
 function PhaseEmpty({ status }: { status?: { type: string } }) {
+  const runState = useAgentStore((s) => s.runState);
+
   // 消息已完成 → 不显示任何占位
   if (status?.type !== "running") return null;
 
-  const phase = useAgentStore((s) => s.runState?.phase);
-  const currentTool = useAgentStore((s) => s.runState?.currentTool);
-
-  if (phase === "thinking") {
+  if (runState?.phase === "thinking") {
+    // 已有思考文本在 ThinkingBlock 里流式展示 —— 气泡内不再重复"思考中"
+    if (runState.thinkingText) return null;
     return <span className="opacity-70">🤔 思考中…</span>;
   }
-  if (phase === "tool_calling" && currentTool) {
+  if (runState?.phase === "tool_calling" && runState.currentTool) {
     return (
-      <span className="opacity-70">🔧 调用 {currentTool.toolName}…</span>
+      <span className="opacity-70">🔧 调用 {runState.currentTool.toolName}…</span>
     );
   }
   return <span className="opacity-60">…</span>;
