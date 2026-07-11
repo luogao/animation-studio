@@ -6,19 +6,24 @@
 // - 内层 <g data-actor-id={id}> 是 GSAP 操作的目标
 //   （这样 GSAP 的 CSS transform 不会覆盖位置）
 // - 默认 transform-origin: center center 让 scale / rotate 自然
+// - 形状本体渲染委托给共享 actorShapes.tsx（与 ScenePreviewThumb 同源）
+// - text 类型在此内联渲染（纯文字，定位语义不同，不走共享渲染器）
+// - image 类型走 useImageLoader 异步加载，未加载时画占位框
 // ============================================================
 
 import type { Actor } from "../types/scene";
 import { FALLBACK_ACTOR_COLOR } from "../lib/colorPalette";
 import { useSelectionStore } from "../store/selectionStore";
 import { getActorBounds } from "../lib/selectionHelpers";
-
-// 默认尺寸（当 actor 未指定 width/height 时使用）
-const DEFAULT_BOX_W = 120;
-const DEFAULT_BOX_H = 60;
-const DEFAULT_CIRCLE_D = 60;
-const DEFAULT_GATE_W = 30;
-const DEFAULT_GATE_H = 80;
+import {
+  renderActorShape,
+  buildMainOpts,
+  DEFAULT_BOX_W,
+  DEFAULT_BOX_H,
+  DEFAULT_IMAGE_W,
+  DEFAULT_IMAGE_H,
+} from "../lib/actorShapes";
+import { useImageLoader } from "../lib/useImageLoader";
 
 // ------------------------------------------------------------
 // 变换字符串拼装
@@ -54,31 +59,38 @@ interface Props {
 }
 
 export function ActorRenderer({ actor }: Props) {
-  const {
-    id,
-    type,
-    label,
-    width,
-    height,
-    color = FALLBACK_ACTOR_COLOR,
-    glow,
-    fontSize = 14,
-    fontWeight = 500,
-    fontFamily,
-  } = actor;
+  const { id, type, glow, fontFamily } = actor;
 
   // ── 选取状态 ──
   const isEditMode = useSelectionStore((s) => s.isEditMode);
   const isSelected = useSelectionStore((s) => s.selectedActorIds.has(id));
   const toggleActor = useSelectionStore((s) => s.toggleActor);
 
+  // ── image 异步加载（仅 image 类型启用）──
+  const imgState = useImageLoader(type === "image" ? actor.src : undefined);
+
+  // ── 有效边界尺寸 ──
+  // 非 image：用 getActorBounds；image：未显式设尺寸时回退到加载后的自然尺寸
   const bounds = getActorBounds(actor);
+  const effW =
+    type === "image"
+      ? actor.width ?? imgState.naturalWidth ?? DEFAULT_IMAGE_W
+      : bounds.w;
+  const effH =
+    type === "image"
+      ? actor.height ?? imgState.naturalHeight ?? DEFAULT_IMAGE_H
+      : bounds.h;
 
   const handleClick = (e: React.MouseEvent) => {
     if (!isEditMode) return;
     e.stopPropagation(); // 阻止冒泡到 SVG 背景（避免误触发 deselectAll）
     toggleActor(id);
   };
+
+  // ── 构造共享渲染器 opts（image 附带加载状态）──
+  const mainOpts = buildMainOpts(actor, effW, effH);
+  const shapeOpts =
+    type === "image" ? { ...mainOpts, imageStatus: imgState.status } : mainOpts;
 
   return (
     <g
@@ -92,8 +104,8 @@ export function ActorRenderer({ actor }: Props) {
         <rect
           x={0}
           y={0}
-          width={bounds.w}
-          height={bounds.h}
+          width={effW}
+          height={effH}
           fill="transparent"
           pointerEvents="all"
           data-edit-only="true"
@@ -102,18 +114,23 @@ export function ActorRenderer({ actor }: Props) {
 
       {/* ── GSAP 目标层（不要放 data-edit-only 元素在这里）── */}
       <g data-actor-id={id} data-actor-type={type} style={glowStyle(glow)}>
-        {renderShape(type, {
-          width: width ?? DEFAULT_BOX_W,
-          height: height ?? DEFAULT_BOX_H,
-          circleD: width ?? DEFAULT_CIRCLE_D,
-          gateW: width ?? DEFAULT_GATE_W,
-          gateH: height ?? DEFAULT_GATE_H,
-          color,
-          label,
-          fontSize,
-          fontWeight,
-          fontFamily,
-        })}
+        {type === "text" ? (
+          <text
+            x={0}
+            y={effH / 2}
+            textAnchor="start"
+            dominantBaseline="middle"
+            fill={actor.color ?? FALLBACK_ACTOR_COLOR}
+            fontSize={actor.fontSize ?? 14}
+            fontWeight={actor.fontWeight ?? 500}
+            fontFamily={fontFamily ?? "var(--font-sans)"}
+            data-actor-part="text"
+          >
+            {actor.label ?? ""}
+          </text>
+        ) : (
+          renderActorShape(type, shapeOpts)
+        )}
       </g>
 
       {/* ── 编辑模式：选中指示器（在 GSAP 目标层之外，不受动画影响）── */}
@@ -122,8 +139,8 @@ export function ActorRenderer({ actor }: Props) {
           className="selection-indicator"
           x={-4}
           y={-4}
-          width={bounds.w + 8}
-          height={bounds.h + 8}
+          width={effW + 8}
+          height={effH + 8}
           fill="none"
           stroke={FALLBACK_ACTOR_COLOR}
           strokeWidth={2}
@@ -134,178 +151,6 @@ export function ActorRenderer({ actor }: Props) {
       )}
     </g>
   );
-}
-
-// ------------------------------------------------------------
-// 形状渲染
-// ------------------------------------------------------------
-
-interface ShapeProps {
-  width: number;
-  height: number;
-  circleD: number;
-  gateW: number;
-  gateH: number;
-  color: string;
-  label?: string;
-  fontSize: number;
-  fontWeight: number;
-  fontFamily?: string;
-}
-
-function renderShape(type: Actor["type"], p: ShapeProps) {
-  switch (type) {
-    case "box":
-      return (
-        <>
-          <rect
-            width={p.width}
-            height={p.height}
-            rx={8}
-            ry={8}
-            fill={p.color}
-            fillOpacity={0.15}
-            stroke={p.color}
-            strokeWidth={1.5}
-            data-actor-part="shape"
-          />
-          {p.label && (
-            <text
-              x={p.width / 2}
-              y={p.height / 2}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill={p.color}
-              fontSize={p.fontSize}
-              fontWeight={p.fontWeight}
-              fontFamily={p.fontFamily ?? "var(--font-sans)"}
-              data-actor-part="label"
-            >
-              {p.label}
-            </text>
-          )}
-        </>
-      );
-
-    case "circle": {
-      const r = p.circleD / 2;
-      return (
-        <>
-          <circle
-            cx={r}
-            cy={r}
-            r={r}
-            fill={p.color}
-            fillOpacity={0.15}
-            stroke={p.color}
-            strokeWidth={1.5}
-            data-actor-part="shape"
-          />
-          {p.label && (
-            <text
-              x={r}
-              y={r}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill={p.color}
-              fontSize={p.fontSize}
-              fontWeight={p.fontWeight}
-              fontFamily={p.fontFamily ?? "var(--font-sans)"}
-              data-actor-part="label"
-            >
-              {p.label}
-            </text>
-          )}
-        </>
-      );
-    }
-
-    case "gate": {
-      // 三根竖线构成的"门"
-      const lineCount = 3;
-      const gap = p.gateW / (lineCount - 1);
-      const lines = Array.from({ length: lineCount }, (_, i) => (
-        <line
-          key={i}
-          x1={i * gap}
-          y1={0}
-          x2={i * gap}
-          y2={p.gateH}
-          stroke={p.color}
-          strokeWidth={2}
-        />
-      ));
-      return (
-        <>
-          <g data-actor-part="shape">{lines}</g>
-          {p.label && (
-            <text
-              x={p.gateW / 2}
-              y={p.gateH + 16}
-              textAnchor="middle"
-              dominantBaseline="hanging"
-              fill={p.color}
-              fontSize={p.fontSize}
-              fontWeight={p.fontWeight}
-              fontFamily={p.fontFamily ?? "var(--font-sans)"}
-              data-actor-part="label"
-            >
-              {p.label}
-            </text>
-          )}
-        </>
-      );
-    }
-
-    case "text":
-      return (
-        <text
-          x={0}
-          y={p.height / 2}
-          textAnchor="start"
-          dominantBaseline="middle"
-          fill={p.color}
-          fontSize={p.fontSize}
-          fontWeight={p.fontWeight}
-          fontFamily={p.fontFamily ?? "var(--font-sans)"}
-          data-actor-part="text"
-        >
-          {p.label ?? ""}
-        </text>
-      );
-
-    case "diamond":
-      return (
-        <>
-          <polygon
-            points={`${p.width / 2},0 ${p.width},${p.height / 2} ${p.width / 2},${p.height} 0,${p.height / 2}`}
-            fill={p.color}
-            fillOpacity={0.15}
-            stroke={p.color}
-            strokeWidth={1.5}
-            data-actor-part="shape"
-          />
-          {p.label && (
-            <text
-              x={p.width / 2}
-              y={p.height / 2}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill={p.color}
-              fontSize={p.fontSize}
-              fontWeight={p.fontWeight}
-              fontFamily={p.fontFamily ?? "var(--font-sans)"}
-              data-actor-part="label"
-            >
-              {p.label}
-            </text>
-          )}
-        </>
-      );
-
-    default:
-      return null;
-  }
 }
 
 // ------------------------------------------------------------

@@ -54,6 +54,7 @@ import type {
   Effect,
   HarmonyScheme,
 } from "../src/types/scene.js";
+import type { MessageAttachment } from "../src/types/message.js";
 import { generatePalettes } from "../src/lib/colorPalette.js";
 import { searchFonts } from "../src/lib/googleFonts.js";
 
@@ -122,7 +123,17 @@ function resolveSettings(): string {
 
 const actorShape = {
   id: z.string().describe("actor 唯一 id，被 connection/phase/effect 引用"),
-  type: z.enum(["box", "circle", "gate", "text", "diamond"]),
+  type: z.enum([
+    "box",
+    "circle",
+    "gate",
+    "text",
+    "diamond",
+    "polygon",
+    "star",
+    "path",
+    "image",
+  ]),
   label: z.string().optional(),
   x: z.number(),
   y: z.number(),
@@ -137,6 +148,12 @@ const actorShape = {
   scale: z.number().optional().describe("初始缩放比例（默认 1）"),
   skewX: z.number().optional().describe("X 轴倾斜（degrees）"),
   skewY: z.number().optional().describe("Y 轴倾斜（degrees）"),
+  // === 形状参数（按 type 生效）===
+  sides: z.number().optional().describe("polygon 边数 3-12，默认 6"),
+  points: z.number().optional().describe("star 角数 4-12，默认 5"),
+  innerRatio: z.number().optional().describe("star 内/外半径比 0-1，默认 0.4"),
+  d: z.string().optional().describe("path 类型的原始 SVG path data（本地坐标系）"),
+  src: z.string().optional().describe("image 类型的图片 URL（同源 /uploads/... 或 data URI）"),
 };
 
 const connectionShape = {
@@ -401,7 +418,8 @@ export async function runAgent(
   userMessage: string,
   currentConfig: SceneConfig,
   ctx: AgentProjectContext,
-  callbacks: AgentCallbacks
+  callbacks: AgentCallbacks,
+  attachments: MessageAttachment[] = []
 ): Promise<void> {
   // 提到 try 外面，catch / finally 都能用（endRun 需要 projectId）
   const { projectId, baseVersionId } = ctx;
@@ -612,9 +630,25 @@ export async function runAgent(
     });
 
     // ── 构造 prompt（含每轮版本前缀）──
+    // 用户本轮上传的图片：agent（CLI 子进程）看不到像素，只能拿到 URL + 尺寸，
+    // 靠这些 + 用户文字描述来排版/摆放。
+    const n = attachments.length;
+    const attachmentBlock =
+      n > 0
+        ? attachments
+            .map(
+              (a) =>
+                `- url: ${a.url}\n  尺寸: ${a.width}x${a.height}`
+            )
+            .join("\n")
+        : "";
+    const attachmentHint = n > 0
+      ? `\n\n[用户本轮上传了 ${n} 张图片]\n${attachmentBlock}\n请用 update_scene_config 把${n > 1 ? "这些图片分别" : "这张图片"}作为 image actor（type:"image", src:url, width, height）加入场景，按用户文字指令摆放；无指令则给一个合理默认位置${n > 1 ? "（多张注意避免重叠、合理排布）" : ""}。注意：你看不到图片像素，只知尺寸与用户描述。\n`
+      : "";
+
     const prompt = `${turnPrefix}
 
-用户消息: ${userMessage}
+用户消息: ${userMessage}${attachmentHint}
 
 当前 config:
 ${JSON.stringify(currentConfig, null, 2)}

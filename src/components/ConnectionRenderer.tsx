@@ -12,6 +12,7 @@
 
 import type { Actor, Connection } from "../types/scene";
 import { FALLBACK_CONNECTION_COLOR } from "../lib/colorPalette";
+import { getActorBounds } from "../lib/selectionHelpers";
 
 interface Props {
   connection: Connection;
@@ -28,16 +29,15 @@ export function ConnectionRenderer({
 }: Props) {
   const { style, color = FALLBACK_CONNECTION_COLOR } = connection;
 
-  // 端点取 actor 边界框中心
-  const fw = from.width ?? from.type === "circle" ? 60 : 120;
-  const fh = from.height ?? from.type === "circle" ? 60 : 60;
-  const tw = to.width ?? to.type === "circle" ? 60 : 120;
-  const th = to.height ?? to.type === "circle" ? 60 : 60;
+  // 端点取 actor 边界框中心（复用 getActorBounds，覆盖全部形状，
+  // 顺带修掉旧实现 `width ?? type === "circle" ? 60 : 120` 的运算符优先级 bug）
+  const fb = getActorBounds(from);
+  const tb = getActorBounds(to);
 
-  const x1 = from.x + fw / 2;
-  const y1 = from.y + fh / 2;
-  const x2 = to.x + tw / 2;
-  const y2 = to.y + th / 2;
+  const x1 = from.x + fb.w / 2;
+  const y1 = from.y + fb.h / 2;
+  const x2 = to.x + tb.w / 2;
+  const y2 = to.y + tb.h / 2;
 
   const isDashed = style === "dashed";
   const hasArrow = style === "arrow";

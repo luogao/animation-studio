@@ -33,6 +33,11 @@ mkdirSync(path.dirname(DB_PATH), { recursive: true });
 export const SESSIONS_DIR = path.join(PROJECT_ROOT, ".data", "sessions");
 mkdirSync(SESSIONS_DIR, { recursive: true });
 
+// 图片上传存储目录 —— 与 studio.db 同级，gitignored。
+// 由 express.static 挂在 /uploads 下提供同源访问（导出不污染 canvas）。
+export const UPLOADS_DIR = path.join(PROJECT_ROOT, ".data", "uploads");
+mkdirSync(UPLOADS_DIR, { recursive: true });
+
 export const db: DatabaseType = new Database(DB_PATH);
 
 // 外键约束（每条连接都要打开）
@@ -94,5 +99,8 @@ ensureColumn("projects", "claude_session_id", "TEXT");
 // messages.tool_calls_json：assistant 消息上挂的工具调用卡片历史
 // JSON 数组，与 agentStore.ToolCallRecord 同 shape。NULL 或空表示无工具调用。
 ensureColumn("messages", "tool_calls_json", "TEXT");
+// messages.attachments_json：user 消息携带的图片附件历史
+// JSON 数组，与 MessageAttachment 同 shape（src/types/message.ts）。NULL 表示无附件。
+ensureColumn("messages", "attachments_json", "TEXT");
 
 console.log(`[db] opened ${DB_PATH}`);

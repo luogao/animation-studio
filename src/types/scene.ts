@@ -2,7 +2,16 @@
 // SceneConfig — 声明式动画配置，驱动 DynamicScene 渲染
 // ============================================================
 
-export type ActorType = "box" | "circle" | "gate" | "text" | "diamond";
+export type ActorType =
+  | "box"
+  | "circle"
+  | "gate"
+  | "text"
+  | "diamond"
+  | "polygon" // 正多边形（sides 边数）
+  | "star" // 星形（points 角数 + innerRatio 内外比）
+  | "path" // 任意 SVG 路径（d 字段）
+  | "image"; // 位图（src 字段）
 export type ConnectionStyle = "line" | "arrow" | "dashed";
 export type PhaseAction =
   | "enter"
@@ -36,6 +45,13 @@ export interface Actor {
   scale?: number; // 初始缩放比例（默认 1）
   skewX?: number; // X 轴倾斜（degrees）
   skewY?: number; // Y 轴倾斜（degrees）
+
+  // === 形状参数（按 type 生效）===
+  sides?: number; // polygon：边数 3-12，默认 6
+  points?: number; // star：角数 4-12，默认 5
+  innerRatio?: number; // star：内/外半径比 0-1，默认 0.4
+  d?: string; // path：原始 SVG path data（本地坐标系）
+  src?: string; // image：图片 URL（同源 /uploads/... 或 data URI）
 }
 
 export interface Connection {

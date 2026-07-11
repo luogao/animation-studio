@@ -7,12 +7,14 @@
 
 import type { Actor } from "../types/scene";
 
-// 默认尺寸（与 ActorRenderer.tsx 保持一致）
+// 默认尺寸（与 actorShapes.tsx 保持一致）
 const DEFAULT_BOX_W = 120;
 const DEFAULT_BOX_H = 60;
 const DEFAULT_CIRCLE_D = 60;
 const DEFAULT_GATE_W = 30;
 const DEFAULT_GATE_H = 80;
+const DEFAULT_IMAGE_W = 200;
+const DEFAULT_IMAGE_H = 150;
 
 export interface ActorBounds {
   w: number;
@@ -27,6 +29,8 @@ export function getActorBounds(actor: Actor): ActorBounds {
   switch (actor.type) {
     case "box":
     case "diamond":
+    case "polygon": // 正多边形外接于 width×height 矩形
+    case "star": // 星形同理
       return { w: actor.width ?? DEFAULT_BOX_W, h: actor.height ?? DEFAULT_BOX_H };
     case "circle": {
       const d = actor.width ?? DEFAULT_CIRCLE_D;
@@ -40,6 +44,13 @@ export function getActorBounds(actor: Actor): ActorBounds {
         estimateTextWidth(actor.label, actor.fontSize ?? 14);
       return { w, h: actor.height ?? DEFAULT_BOX_H };
     }
+    case "path":
+      // path 的真实包围盒需 getBBox() 异步测量；这里用显式 width/height，
+      // 缺失则回退默认（提示词要求 agent 为 path 设 width/height）。
+      return { w: actor.width ?? DEFAULT_BOX_W, h: actor.height ?? DEFAULT_BOX_H };
+    case "image":
+      // 未设尺寸时回退默认；真实自然尺寸由 useImageLoader 加载后回填到 actor。
+      return { w: actor.width ?? DEFAULT_IMAGE_W, h: actor.height ?? DEFAULT_IMAGE_H };
     default:
       return { w: DEFAULT_BOX_W, h: DEFAULT_BOX_H };
   }

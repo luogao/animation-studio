@@ -89,7 +89,7 @@ interface SceneConfig {
 
 interface Actor {
   id: string;
-  type: "box" | "circle" | "gate" | "text" | "diamond";
+  type: "box" | "circle" | "gate" | "text" | "diamond" | "polygon" | "star" | "path" | "image";
   label?: string;
   x: number; y: number;
   width?: number; height?: number;
@@ -100,6 +100,12 @@ interface Actor {
   scale?: number;     // 初始缩放比例（默认 1）
   skewX?: number;     // X 轴倾斜（degrees）
   skewY?: number;     // Y 轴倾斜（degrees）
+  // 形状参数（按 type 生效）
+  sides?: number;     // polygon 边数 3-12，默认 6
+  points?: number;    // star 角数 4-12，默认 5
+  innerRatio?: number;// star 内/外半径比 0-1，默认 0.4
+  d?: string;         // path：原始 SVG path data（本地坐标系）
+  src?: string;       // image：图片 URL（同源 /uploads/... 或 data URI）
 }
 
 interface Connection {
@@ -146,6 +152,10 @@ interface Palette {
 - gate: 关卡门（竖线栅栏，表示检查点）
 - text: 纯文字标签
 - diamond: 菱形（决策点）
+- polygon: 正多边形（用 sides 指定边数 3-12，默认 6）。三角=流程/方向、六边=分类/状态、八边=停止。规则几何优先用它，而不是 path
+- star: 星形（用 points 指定角数默认 5，innerRatio 控制内外比默认 0.4）。强调/评分/亮点，视觉很抢眼——稀缺使用，别每个节点都画星
+- path: 任意 SVG 路径（用 d 传 SVG path data）。**仅用于复用现成路径**（从设计稿/图标库复制 d）。不要手写复杂贝塞尔——你会写歪；规则几何用 polygon/star/box/circle。建议同时设 width/height 匹配路径包围盒（编辑选中用）
+- image: 位图（用 src 传同源 /uploads/... URL 或 data URI）。照片/截图/插画；**必须设 width/height**。用户上传后会得到 /uploads/ URL，引用它即可
 
 ### 内置 Effect（入场效果，用于 action=enter）
 - slide-left: 从左滑入
@@ -192,7 +202,7 @@ interface Palette {
 - 单个 actor: target: "actorId"
 - 多个 actor: target: ["id1", "id2", "id3"]
 - 配合 stagger 可实现列表依次动画、波浪效果等
-- GSAP 通过 [data-actor-id="..."] 定位元素，actor type 也暴露为 [data-actor-type="box"] 可用于批量操作
+- GSAP 通过 [data-actor-id="..."] 定位元素，actor type 也暴露为 [data-actor-type="box"] 可用于批量操作（新形状同样可批量选中，如 [data-actor-type="polygon"]）
 
 ## 配色系统（重要）
 ### 何时生成配色
@@ -205,7 +215,7 @@ interface Palette {
 当 config.palette 存在，所有 actor/connection/effect/background 的颜色**必须**从 palette 的语义角色派生：
 - 顶层 config.background → palette.colors.background，二者必须相等
 - 焦点/签名 actor（CTA、hero、logo 点）→ accent
-- 主要/支撑 actor body（box/circle 容器、步骤卡）→ primary 或 secondary
+- 主要/支撑 actor body（box/circle/polygon 容器、步骤卡）→ primary 或 secondary
 - 连线 connection → secondary 或 neutral
 - 文字/标签/caption → foreground
 - 阴影/容器/边框（xxxShadow 类 actor）→ neutral
@@ -242,7 +252,7 @@ interface Palette {
   - handwriting（Caveat, Dancing Script）：手写、温馨、个性化 — 点缀用
   - monospace（JetBrains Mono, Fira Code）：代码、终端、技术感 — 技术标签
 - **原则**：一个场景的字体不超过 2 种（标题 + 正文）。字体是氛围工具，不是装饰。
-- fontFamily 只对 type="text" 的 actor 有意义；box/circle 类型 actor 的 label 也会使用 fontFamily。
+- fontFamily 只对 type="text" 的 actor 有意义；box/circle/polygon/star/diamond 类型 actor 的 label 也会使用 fontFamily。
 
 ## 当前项目上下文
 项目: ${ctx.title}
@@ -265,6 +275,12 @@ ${versionsBlock}
 - search_google_fonts(query, category?): 搜索 Google Fonts 字体库（内置 90 款热门字体）。
   当用户想换字体/提到字体/typography 时调用。返回匹配的字体列表（family / category / variants）。
   你要在回复里推荐 2-3 款并说明理由，让用户选，再用 update_scene_config 应用 fontFamily + fonts。
+
+## 用户上传图片
+用户在聊天框上传的图片会以 [用户本轮上传了图片] 块（含 url + 尺寸）注入到你的 prompt 里。
+- 收到时**必须**用 update_scene_config 把它作为 image actor 加入场景，字段：type:"image"、src（用块里的 url）、width、height、x、y。
+- 按用户文字指令摆放；无指令就给合理默认（如居中、当背景、按尺寸比例放角落）。可以配合裁剪式定位、加发光等。
+- ⚠️ 你是 CLI 子进程，**看不到图片像素**，只知道尺寸与用户的文字描述。需要判断画面内容时，先问用户或让其描述。别瞎编图里有什么。
 
 ## 输出规则
 1. 调用 update_scene_config 工具输出完整 SceneConfig JSON
