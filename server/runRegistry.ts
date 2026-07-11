@@ -37,6 +37,8 @@ export interface RunState {
   startedAt: number;
   // 累加的 assistant 文本——刷新页面后客户端能从这里读到当前已生成的部分
   streamedText: string;
+  // 累加的 thinking 文本（thinking_delta）—— 同 streamedText，用于重连恢复
+  thinkingText: string;
   currentTool?: {
     toolCallId: string;
     toolName: string;
@@ -51,6 +53,7 @@ export interface AgentStatePayload {
   phase: RunPhase;
   startedAt: number;
   streamedText: string;
+  thinkingText: string;
   currentTool?: {
     toolCallId: string;
     toolName: string;
@@ -77,6 +80,7 @@ function toPayload(rs: RunState): AgentStatePayload {
     phase: rs.phase,
     startedAt: rs.startedAt,
     streamedText: rs.streamedText,
+    thinkingText: rs.thinkingText,
     currentTool: rs.currentTool,
   };
 }
@@ -143,6 +147,7 @@ export function startRun(projectId: string, runId: string): RunState {
     phase: "thinking",
     startedAt: Date.now(),
     streamedText: "",
+    thinkingText: "",
   };
   runs.set(projectId, rs);
   broadcast(projectId, { type: "agent_state", payload: toPayload(rs) });
@@ -172,6 +177,13 @@ export function appendRunText(projectId: string, delta: string): void {
   const rs = runs.get(projectId);
   if (!rs) return;
   rs.streamedText += delta;
+}
+
+// 累加 thinking 文本（与 appendRunText 对称；不广播，由 agent.ts 走 onThinkingDelta）
+export function appendRunThinking(projectId: string, delta: string): void {
+  const rs = runs.get(projectId);
+  if (!rs) return;
+  rs.thinkingText += delta;
 }
 
 export function getRun(projectId: string): RunState | undefined {

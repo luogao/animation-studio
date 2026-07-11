@@ -33,6 +33,8 @@ export interface MessageRow {
   tool_calls?: ToolCallRecord[];
   // 反序列化后字段（DB 列名 attachments_json）—— 不存在时为 undefined
   attachments?: MessageAttachment[];
+  // 思考过程文本（DB 列名 thinking）—— assistant 消息流式累加的 thinking_delta。
+  thinking?: string;
 }
 
 export interface InsertMessageInput {
@@ -44,6 +46,8 @@ export interface InsertMessageInput {
   toolCalls?: ToolCallRecord[];
   // 仅 user 消息会携带（图片附件）；assistant 消息忽略此字段
   attachments?: MessageAttachment[];
+  // 仅 assistant 消息会携带；模型思考过程文本（thinking_delta 累加）
+  thinking?: string;
 }
 
 export function insertMessage(input: InsertMessageInput): MessageRow {
@@ -57,10 +61,12 @@ export function insertMessage(input: InsertMessageInput): MessageRow {
     input.attachments && input.attachments.length > 0
       ? JSON.stringify(input.attachments)
       : null;
+  const thinkingText =
+    input.thinking && input.thinking.length > 0 ? input.thinking : null;
   const tx = db.transaction(() => {
     db.prepare(
-      `INSERT INTO messages (id, project_id, role, content, version_id, created_at, tool_calls_json, attachments_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO messages (id, project_id, role, content, version_id, created_at, tool_calls_json, attachments_json, thinking)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       input.projectId,
@@ -69,7 +75,8 @@ export function insertMessage(input: InsertMessageInput): MessageRow {
       input.versionId ?? null,
       now,
       toolCallsJson,
-      attachmentsJson
+      attachmentsJson,
+      thinkingText
     );
     touchProject(input.projectId);
   });
@@ -105,13 +112,17 @@ export function listMessages(projectId: string): MessageRow[] {
 // ── 反序列化：DB 行 → MessageRow ──
 // tool_calls_json / attachments_json TEXT → 对应数组字段
 function deserializeRow(
-  row: Omit<MessageRow, "tool_calls" | "attachments"> & {
+  row: Omit<MessageRow, "tool_calls" | "attachments" | "thinking"> & {
     tool_calls_json?: string | null;
     attachments_json?: string | null;
+    thinking?: string | null;
   }
 ): MessageRow {
-  const { tool_calls_json, attachments_json, ...rest } = row;
+  const { tool_calls_json, attachments_json, thinking, ...rest } = row;
   const out: MessageRow = { ...rest } as MessageRow;
+  if (typeof thinking === "string" && thinking.length > 0) {
+    out.thinking = thinking;
+  }
   if (typeof tool_calls_json === "string" && tool_calls_json.length > 0) {
     try {
       const parsed = JSON.parse(tool_calls_json) as ToolCallRecord[];

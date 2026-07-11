@@ -48,6 +48,8 @@ interface ProjectDetailResponse {
     created_at: number;
     // 服务端 messages.tool_calls_json 反序列化后的数组（assistant 才有）
     tool_calls?: ToolCallRecord[];
+    // 服务端 messages.thinking 反序列化后的思考过程文本（assistant 才有）
+    thinking?: string;
   }[];
   headId: string | null;
   draftId: string | null;
@@ -176,13 +178,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         loading: false,
       });
 
-      // 同步消息到 agentStore（含 toolCalls，刷新后卡片不丢）
+      // 同步消息到 agentStore（含 toolCalls / thinking，刷新后卡片与思考过程不丢）
       useAgentStore.getState().loadMessages(
         data.messages.map((m) => ({
           id: m.id,
           role: m.role,
           content: m.content,
           toolCalls: m.tool_calls,
+          thinking: m.thinking,
         }))
       );
     } catch (err) {

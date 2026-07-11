@@ -102,5 +102,8 @@ ensureColumn("messages", "tool_calls_json", "TEXT");
 // messages.attachments_json：user 消息携带的图片附件历史
 // JSON 数组，与 MessageAttachment 同 shape（src/types/message.ts）。NULL 表示无附件。
 ensureColumn("messages", "attachments_json", "TEXT");
+// messages.thinking：assistant 消息携带的模型思考过程文本（流式 thinking_delta 累加）。
+// 纯字符串，NULL 或空表示无思考内容。供前端渲染可折叠的「思考过程」模块。
+ensureColumn("messages", "thinking", "TEXT");
 
 console.log(`[db] opened ${DB_PATH}`);

@@ -15,6 +15,7 @@ import { toast } from "sonner";
 interface ServerMessage {
   type:
     | "stream"
+    | "thinking_delta" // 模型思考过程增量（与 stream 对称）
     | "config_update"
     | "done"
     | "error"
@@ -42,6 +43,7 @@ interface ServerMessage {
     phase?: RunState["phase"];
     startedAt?: number;
     streamedText?: string;
+    thinkingText?: string;
     currentTool?: RunState["currentTool"];
   };
 }
@@ -167,6 +169,13 @@ function dispatchToStore(msg: ServerMessage): void {
       break;
     }
 
+    // ── 思考过程增量：追加到最后一条 assistant 消息的 thinking 字段 ──
+    case "thinking_delta": {
+      if (!agent.isStreaming) break;
+      agent.appendThinkingDelta(msg.payload?.delta ?? "");
+      break;
+    }
+
     // ── 配置更新：agent 工具触发，乐观写本地 draft ──
     case "config_update": {
       const config = msg.payload?.config;
@@ -264,12 +273,16 @@ function dispatchToStore(msg: ServerMessage): void {
         phase: p.phase,
         startedAt: p.startedAt ?? Date.now(),
         streamedText: p.streamedText ?? "",
+        thinkingText: p.thinkingText ?? "",
         currentTool: p.currentTool,
       };
       agent.setRunState(rs);
-      // 流式恢复：服务端 streamedText 是权威来源
+      // 流式恢复：服务端 streamedText / thinkingText 是权威来源
       if (rs.streamedText) {
         agent.syncStreamingText(rs.streamedText);
+      }
+      if (rs.thinkingText) {
+        agent.syncThinkingText(rs.thinkingText);
       }
       break;
     }
