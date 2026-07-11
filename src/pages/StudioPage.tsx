@@ -23,6 +23,10 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
+// 选中 actor 后右侧的属性编辑面板（ActorPropertyPanel）总开关。
+// 暂时隐藏：恢复时把这里改回 true 即可（组件本体与选中逻辑均未动）。
+const ENABLE_PROPERTY_PANEL = false;
+
 export default function StudioPage() {
   const { projectId: urlProjectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -130,7 +134,7 @@ export default function StudioPage() {
       {/* ── 主体：对话面板 + 画布 ── */}
       <div className="flex-1 flex min-h-0">
         {/* ── 对话面板 ── */}
-        <div className="w-[380px] shrink-0 border-r-2 border-foreground">
+        <div className="w-[500px] shrink-0 border-r-2 border-foreground">
           <ChatPanel />
         </div>
 
@@ -148,7 +152,7 @@ export default function StudioPage() {
         </div>
 
         {/* ── Actor 属性面板（编辑模式 + 选中时）── */}
-        <ActorPropertyPanel />
+        {ENABLE_PROPERTY_PANEL && <ActorPropertyPanel />}
       </div>
     </div>
   );
