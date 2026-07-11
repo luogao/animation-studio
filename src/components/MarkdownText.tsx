@@ -21,7 +21,19 @@ export const MarkdownText: TextMessagePartComponent = ({ text, status }) => {
       className="markdown-text prose-studio"
       data-status={status?.type ?? "complete"}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          // 宽表格在气泡内横向滚动，避免撑破对话气泡
+          table: ({ node, ...props }) => (
+            <div className="overflow-x-auto">
+              <table {...props} />
+            </div>
+          ),
+        }}
+      >
+        {text}
+      </ReactMarkdown>
       {running && <span className="streaming-caret" aria-hidden="true" />}
     </div>
   );

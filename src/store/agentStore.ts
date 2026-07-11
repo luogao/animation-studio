@@ -17,6 +17,7 @@
 
 import { create } from "zustand";
 import type { Palette } from "../types/scene";
+import type { MessageAttachment } from "../types/message";
 
 // ============================================================
 // 消息类型（对话面板用）
@@ -38,6 +39,7 @@ export interface ChatItem {
   role: "user" | "assistant";
   content: string; // 文本内容（DB 持久化）
   toolCalls?: ToolCallRecord[]; // 持久化：done 时随 assistant 消息入库
+  attachments?: MessageAttachment[]; // 持久化：user 消息携带的图片附件（messages.attachments_json）
 }
 
 // ── RunState：服务端 broadcast 过来的 agent 运行态 ──
@@ -162,7 +164,10 @@ export const useAgentStore = create<AgentState>((set) => ({
       // 防御：过滤掉既无文本内容也无工具调用的空消息
       //（PhaseEmpty 兜底已修复，这里是第二层保险，避免 DB 历史残留）
       chatMessages: msgs.filter(
-        (m) => m.content || (m.toolCalls && m.toolCalls.length > 0)
+        (m) =>
+          m.content ||
+          (m.toolCalls && m.toolCalls.length > 0) ||
+          (m.attachments && m.attachments.length > 0)
       ),
       isStreaming: false,
       runState: null,

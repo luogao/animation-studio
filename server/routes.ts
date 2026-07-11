@@ -111,10 +111,11 @@ apiRouter.get("/projects/:id/messages", (req, res) => {
 });
 
 apiRouter.post("/projects/:id/messages", (req, res) => {
-  const { role, content, versionId } = (req.body ?? {}) as {
+  const { role, content, versionId, attachments } = (req.body ?? {}) as {
     role?: "user" | "assistant";
     content?: string;
     versionId?: string;
+    attachments?: import("../src/types/message.js").MessageAttachment[];
   };
   if (!role || !content) {
     res.status(400).json({ error: "role and content required" });
@@ -130,6 +131,10 @@ apiRouter.post("/projects/:id/messages", (req, res) => {
       role,
       content,
       versionId,
+      attachments:
+        role === "user" && attachments && attachments.length > 0
+          ? attachments
+          : undefined,
     });
     res.status(201).json(msg);
   } catch (err) {

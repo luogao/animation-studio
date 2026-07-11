@@ -94,7 +94,18 @@ Plain History API at `/p/:projectId` (no react-router). `src/App.tsx` parses on 
 - is what gets persisted in `versions.config_json`,
 - is what gets exported (wrapped in `ExportedSceneConfig` envelope).
 
-When editing the type, update **all four** places: the TS interface, the system prompt's interface block in `server/prompts.ts`, the `update_scene_config` tool's `inputSchema` in `server/agent.ts`, and the effect factory in `src/lib/gsapEffects.ts` if a new phase/effect name is introduced.
+When editing the type, keep the schema in sync across:
+- **TS interface** — `src/types/scene.ts`.
+- **system-prompt interface block** — `server/prompts.ts`.
+- **`update_scene_config` inputSchema (zod)** — `server/agent.ts` (`actorShape` / `sceneConfigShape`). The handler persists `args` wholesale (`args as unknown as SceneConfig`) and never inspects individual fields, so new fields need no handler change — but the zod enum/shape is the gate that decides what the agent may emit.
+- **effect factory** — `src/lib/gsapEffects.ts`, only if a new phase/effect *name* is introduced.
+
+**Adding a new actor shape** (`ActorType`) has extra touch points beyond the core three above:
+- `src/lib/actorShapes.tsx` — the shared inner-shape renderer. Both `ActorRenderer` (main canvas) and `ScenePreviewThumb` consume `renderActorShape()`, so a new shape added here propagates to both (this replaced the old duplicated per-component `switch(type)` renderers — the main drift risk). Geometry helpers `polygonPoints`/`starPoints` live here too.
+- `getActorBounds` in `src/lib/selectionHelpers.ts` — drives the edit-mode hit-area, selection indicator, and connection endpoints. `ConnectionRenderer` reads bounds (so no separate change there); `formatSelectionContext` (same file) is type-aware too.
+- `LABEL_BEARING_TYPES` in `src/components/ActorPropertyPanel.tsx` — add the shape if it renders a label and should expose the typography controls.
+- `### Actor类型` section in `server/prompts.ts` — document when to use it.
+- `image` is a special shape: its `src` is a same-origin `/uploads/...` URL (or data URI) produced by the upload subsystem (`server/uploads.ts` → `POST /api/uploads`, static-served at `/uploads`; client lib `src/lib/uploadImage.ts`). On export, `/uploads/` URLs are inlined to data URIs by `exportConfig.ts` for Remotion portability. See "Image upload" below.
 
 ### Color palette system
 `SceneConfig.palette?` (`Palette`) is the semantic color baseline — 6 roles (`primary`/`secondary`/`accent`/`neutral`/`foreground`/`background`) plus `name`/`description`/`harmony`/`seed` metadata. The agent **bakes** semantic colors into concrete hex on each actor/connection/effect (not token references), so the render layer and export contract are unchanged; `config.background` must equal `palette.colors.background` (dev-warned in `applyAgentConfig`). Design split: the **algorithm** (`src/lib/colorPalette.ts` — pure fns: hex↔HSL, WCAG `ensureContrast`, `generatePalettes`) guarantees harmony (math); the **agent** guarantees taste (naming/description/which-role-to-bake). `generate_color_palettes` only generates unnamed proposals; the agent names the 3, lets the user pick, then `update_scene_config` applies. Role→element mapping (accent→focal/CTA, primary/secondary→supporting bodies, foreground→text, neutral→shadows, glow=lighten(accent)) is encoded in the system prompt's 配色系统 block. `src/lib/colorPalette.ts` is shared frontend↔server, so it's added **file-level** to `tsconfig.server.json` `include` (do NOT add all of `src/lib/` — `exportMedia.ts`/`exportConfig.ts` pull browser APIs). `DEFAULT_SCENE_CONFIG` ships a `Studio Gold` (`custom`) baseline. MCP toolNames arrive prefixed (`mcp__studio__…`); `ToolCallCard.shortToolName()` strips the prefix before matching.
@@ -161,6 +172,14 @@ The agent receives the **current** config in every `chat` message and must retur
 - `MarkdownText` — streaming markdown with caret via `react-markdown` + `remark-gfm`
 - `ToolCallCard` — renders `toolCalls[]` on assistant messages (phase badge, expandable input/output)
 - `PhaseEmpty` + `PhaseStatusChip` — phase-aware placeholders driven by `agentStore.runState`
+- `UserBubble` renders `attachments[]` (uploaded images) inline by reading the `ChatItem` from `agentStore` by `messageId` (same pattern as `AssistantBubble` reads `toolCalls`) — it deliberately does **not** use assistant-ui's image content-slot, to avoid double rendering.
+
+### Image upload (chat-driven, agent-placed)
+Images enter through the **chat composer**, not a side panel. Flow: composer upload button (`ImagePlus` next to Send, in `ChatPanel.tsx`'s `ChatComposer`) → `uploadImageFile()` (`src/lib/uploadImage.ts`) → POST `/api/uploads` (base64 body, separate 16MB parser in `server/uploads.ts`, since the global `/api` parser caps at 5MB) → file lands in `UPLOADS_DIR` (`.data/uploads/`, sibling to `studio.db`), static-served same-origin at `/uploads`. Uploaded images are staged as **pending attachments** (multiple may be accumulated) in `composerStore` (`src/store/composerStore.ts`) with thumbnail previews, each with its own remove ✕; on send they ride along the normal chat turn.
+- **Transport**: `sendMessage(text, attachments?)` (`src/hooks/useWebSocket.ts`) adds `attachments` to the WS `chat` payload; `server/wsHandler.ts` persists them on the user message and forwards to `runAgent`.
+- **Agent**: `runAgent(..., attachments)` (`server/agent.ts`) injects a `[用户本轮上传了图片]` block (url + dimensions) into the prompt. The agent is a **CLI subprocess and cannot see image pixels** — it only knows URL + size + the user's text, which is enough for layout. It places the image via `update_scene_config` (an `image` actor with `src` = the `/uploads/` URL), which creates/updates the draft as usual. So config + draft persistence rides the existing tool path — no separate client draft REST.
+- **Persistence**: `messages.attachments_json` column (additive migration via `ensureColumn`), serialized alongside `tool_calls_json` in `server/db/messages.ts`. `ChatItem.attachments?` mirrors it (`src/store/agentStore.ts`); `loadMessages` keeps messages with attachments even if `content` is empty.
+- **Export**: `src/lib/exportConfig.ts` inlines any `/uploads/` image-actor `src` into a data URI at export time so the JSON is Remotion-portable; live preview uses the same-origin URL (fast, no canvas taint).
 
 ### Agent integration (Claude Agent SDK 0.3.x)
 `server/agent.ts` is the only place that talks to the SDK. The pattern:
@@ -169,11 +188,12 @@ The agent receives the **current** config in every `chat` message and must retur
 2. Wrap with `createSdkMcpServer({ name: "studio", tools: [...] })` → pass as `mcpServers: { studio }` to `query()`.
 3. `query()` options: `tools: []` disables all built-in tools so the agent can only call our MCP tools; `permissionMode: "bypassPermissions"` + `allowDangerouslySkipPermissions: true` skips prompts (safe because the only callable tools are our in-process handlers).
 4. **Session resume**: SDK has **no `messages` option** in `query()`. Multi-turn memory works via `Options.sessionId` (first turn) / `Options.resume` (subsequent turns); SDK persists conversation JSONL to `<CLAUDE_CONFIG_DIR>/projects/<sanitized-cwd>/<sessionId>.jsonl`. We override `CLAUDE_CONFIG_DIR` via `Options.env` to `.data/sessions/` (exported as `SESSIONS_DIR` from `server/db/index.ts`). Per-project `claude_session_id` stored in `projects` table; `getSessionId`/`setSessionId` in `server/db/projects.ts`. DB messages are now UI-level cache only — SDK session is the source of truth for agent memory. Note: relocating `CLAUDE_CONFIG_DIR` moves the **entire** Claude state root (todos/, shell-snapshots/, .credentials.json, history.jsonl, etc.) into `.data/sessions/`, not just session JSONLs.
-5. Four MCP tools:
+5. Five MCP tools:
    - `update_scene_config(config)` — full SceneConfig, persists to draft.
    - `get_version_history()` — no args, returns JSON of version tree for current project.
    - `rollback_to_version(targetVersionId, confirmation)` — must pass `confirmation: true` to execute; `false` returns error text asking user to confirm. Executes git-style rollback.
    - `generate_color_palettes(seedColor, schemes?)` — pure-algorithm tool (no DB/callbacks). Derives 3 harmonically-sound palettes (analogous/complementary/triadic) from a seed color via `src/lib/colorPalette.ts`, all WCAG-contrast-checked. Returns unnamed palettes as JSON; the agent names/describes them and, on user selection, bakes them into actor hex via `update_scene_config`.
+   - `search_google_fonts(query, category?)` — pure tool over a built-in list of ~90 popular Google Fonts (`src/lib/googleFonts.ts`). Returns matching fonts (family/category/variants). The agent recommends 2-3, lets the user pick, then applies via `update_scene_config` (sets `fontFamily` on text actors + lists them in `config.fonts` for preload).
 6. Iterate the returned `Query` async generator. `assistant` messages contain `message.content[]` blocks (`text` / `tool_use`). `tool_use` blocks for our tools are dispatched in-process by the MCP handler — no need to parse them here. Multi-turn text deltas are joined with `\n\n`.
 7. The handler runs **in-process** and calls `callbacks.onConfigUpdate(args)` synchronously — the new config flows to the client via the WS `config_update` message in `wsHandler.ts`.
 

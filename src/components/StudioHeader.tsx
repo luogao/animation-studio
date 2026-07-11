@@ -11,7 +11,7 @@ import { CanvasSizeControl } from "./CanvasSizeControl";
 import { ColorPalettePanel } from "./ColorPalettePanel";
 import { LlmConfigDialog } from "./LlmConfigDialog";
 import { buildExportEnvelope, downloadConfig } from "../lib/exportConfig";
-import { exportVideo, exportGif } from "../lib/exportMedia";
+import { exportVideo, exportGif, exportMp4 } from "../lib/exportMedia";
 import { toast } from "sonner";
 import { useState, useRef, useEffect } from "react";
 
@@ -42,7 +42,7 @@ export function StudioHeader() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [exportOpen]);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const s = useProjectStore.getState();
     const result = buildExportEnvelope({
       projectId: s.projectId ?? "",
@@ -56,7 +56,7 @@ export function StudioHeader() {
       toast.error(result.error);
       return;
     }
-    const filename = downloadConfig(result.envelope);
+    const filename = await downloadConfig(result.envelope);
     toast.success(`已导出 ${filename}`, {
       description:
         result.envelope.status === "draft"
@@ -65,7 +65,10 @@ export function StudioHeader() {
     });
   };
 
-  const doExportMedia = async (format: "video" | "gif", label: string) => {
+  const doExportMedia = async (
+    format: "video" | "gif" | "mp4",
+    label: string
+  ) => {
     setExportOpen(false);
     if (exportBusy) return;
     const config =
@@ -74,7 +77,12 @@ export function StudioHeader() {
     setExportBusy(true);
     toast.info(`开始导出 ${label}...`);
     try {
-      const fn = format === "video" ? exportVideo : exportGif;
+      const exporters = {
+        video: exportVideo,
+        gif: exportGif,
+        mp4: exportMp4,
+      } as const;
+      const fn = exporters[format];
       await fn(config, (phase) => {
         toast.info(phase, { duration: 2000 });
       });
@@ -175,6 +183,12 @@ export function StudioHeader() {
                 }}
               >
                 导出配置 (JSON)
+              </button>
+              <button
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+                onClick={() => doExportMedia("mp4", "视频 (MP4)")}
+              >
+                导出视频 (MP4)
               </button>
               <button
                 className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"

@@ -12,8 +12,20 @@ import { useSelectionStore } from "../store/selectionStore";
 import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
 import { searchFonts, type GoogleFont } from "../lib/googleFonts";
 import { FALLBACK_ACTOR_COLOR, normalizeHex } from "../lib/colorPalette";
-import type { Actor } from "../types/scene";
+import type { Actor, ActorType } from "../types/scene";
 import { cn } from "../lib/utils";
+
+// 会渲染 label 的形状 —— 这些类型共享字号/字重/字体控件。
+// （image / path 默认无文字 label，不进排版区。）
+const LABEL_BEARING_TYPES: ReadonlySet<ActorType> = new Set([
+  "text",
+  "box",
+  "circle",
+  "gate",
+  "diamond",
+  "polygon",
+  "star",
+]);
 
 // ============================================================
 // 工具：多选共同值
@@ -359,9 +371,10 @@ export function ActorPropertyPanel() {
     [config.actors, selectedActorIds]
   );
 
-  // 是否包含 text 类型
-  const hasTextActor = useMemo(
-    () => selectedActors.some((a) => a.type === "text"),
+  // 是否包含"带 label 的形状"（text + 所有会渲染 label 的几何形状）
+  // 这些类型共享字号/字重/字体控件。
+  const hasLabeledActor = useMemo(
+    () => selectedActors.some((a) => LABEL_BEARING_TYPES.has(a.type)),
     [selectedActors]
   );
 
@@ -376,18 +389,18 @@ export function ActorPropertyPanel() {
   );
   const commonFontSize = useMemo(
     () =>
-      hasTextActor ? getCommonValue(selectedActors, "fontSize") : null,
-    [selectedActors, hasTextActor]
+      hasLabeledActor ? getCommonValue(selectedActors, "fontSize") : null,
+    [selectedActors, hasLabeledActor]
   );
   const commonFontWeight = useMemo(
     () =>
-      hasTextActor ? getCommonValue(selectedActors, "fontWeight") : null,
-    [selectedActors, hasTextActor]
+      hasLabeledActor ? getCommonValue(selectedActors, "fontWeight") : null,
+    [selectedActors, hasLabeledActor]
   );
   const commonFontFamily = useMemo(
     () =>
-      hasTextActor ? getCommonValue(selectedActors, "fontFamily") : null,
-    [selectedActors, hasTextActor]
+      hasLabeledActor ? getCommonValue(selectedActors, "fontFamily") : null,
+    [selectedActors, hasLabeledActor]
   );
 
   // 批量更新选中 actor 的指定属性
@@ -450,8 +463,8 @@ export function ActorPropertyPanel() {
         />
       </CollapsibleSection>
 
-      {/* ── 排版分区（仅 text actor）── */}
-      {hasTextActor && (
+      {/* ── 排版分区（带 label 的形状）── */}
+      {hasLabeledActor && (
         <CollapsibleSection label="排版" icon={Type} defaultOpen>
           <SliderField
             label="字号"

@@ -12,17 +12,28 @@
 // ============================================================
 
 import type { ReactNode } from "react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
 } from "@assistant-ui/react";
+import { ChevronLeft, ChevronRight, ImagePlus } from "lucide-react";
+import { toast } from "sonner";
 import { useStudioRuntime } from "../lib/assistantRuntime";
 import { useAgentStore } from "../store/agentStore";
+import { useComposerStore } from "../store/composerStore";
+import { uploadImageFile } from "../lib/uploadImage";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import type { MessageAttachment } from "../types/message";
 import { MarkdownText } from "./MarkdownText";
 import { ToolCallCard } from "./ToolCallCard";
 import { SelectionTags } from "./SelectionTags";
@@ -57,7 +68,7 @@ export function ChatPanel({ children }: { children?: ReactNode }) {
             <ThreadPrimitive.Messages>
               {({ message }) =>
                 message.role === "user" ? (
-                  <UserBubble />
+                  <UserBubble messageId={message.id} />
                 ) : (
                   <AssistantBubble messageId={message.id} />
                 )
@@ -72,26 +83,7 @@ export function ChatPanel({ children }: { children?: ReactNode }) {
           <SelectionTags />
 
           {/* ── 底部输入区 ── */}
-          <ComposerPrimitive.Root className="flex gap-2 p-3 border-t-2 border-foreground shrink-0">
-            <ComposerPrimitive.Input
-              asChild
-              placeholder="输入消息... (Enter 发送 / Shift+Enter 换行)"
-              rows={2}
-            >
-              <Textarea
-                className="flex-1 resize-none min-h-0 bg-card"
-                disabled={isStreaming}
-              />
-            </ComposerPrimitive.Input>
-            <ComposerPrimitive.Send asChild>
-              <Button
-                disabled={isStreaming}
-                className="self-end whitespace-nowrap"
-              >
-                {isStreaming ? "生成中…" : "发送"}
-              </Button>
-            </ComposerPrimitive.Send>
-          </ComposerPrimitive.Root>
+          <ChatComposer isStreaming={isStreaming} />
         </ThreadPrimitive.Root>
       </aside>
     </AssistantRuntimeProvider>
@@ -99,14 +91,238 @@ export function ChatPanel({ children }: { children?: ReactNode }) {
 }
 
 // ============================================================
+// Composer —— 文本输入 + 发送 + 图片上传按钮 + 待发送附件预览
+// ============================================================
+
+function ChatComposer({ isStreaming }: { isStreaming: boolean }) {
+  const pendingImages = useComposerStore((s) => s.pendingImages);
+  const addImage = useComposerStore((s) => s.addImage);
+  const removeImage = useComposerStore((s) => s.removeImage);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const handlePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ""; // 允许重复选同一文件
+    if (files.length === 0) return;
+    setBusy(true);
+    try {
+      // 逐张上传、逐张追加；单张失败不中断其余
+      for (const file of files) {
+        try {
+          const img = await uploadImageFile(file);
+          addImage({ type: "image", url: img.url, width: img.width, height: img.height });
+        } catch (err) {
+          toast.error(
+            err instanceof Error
+              ? `${file.name}: ${err.message}`
+              : `${file.name} 上传失败`
+          );
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="shrink-0 border-t-2 border-foreground">
+      {/* ── 待发送图片预览（可累积多张）── */}
+      {pendingImages.length > 0 && (
+        <div className="px-3 pt-2">
+          <div className="flex items-start gap-2 flex-wrap">
+            {pendingImages.map((img, i) => (
+              <div key={img.url} className="relative">
+                <img
+                  src={img.url}
+                  alt="待发送"
+                  title={`${img.width}×${img.height}`}
+                  className="h-16 w-16 object-cover border-2 border-foreground"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeImage(i)}
+                  className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center text-[11px] leading-none"
+                  aria-label="移除图片"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+          <span className="text-[10px] text-muted-foreground leading-tight mt-1 block">
+            {pendingImages.length} 张图片 · 随下条消息发送给 agent
+          </span>
+        </div>
+      )}
+
+      <ComposerPrimitive.Root className="flex gap-2 p-3">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handlePick}
+          className="hidden"
+        />
+        <ComposerPrimitive.Input asChild placeholder="输入消息..." rows={2}>
+          <Textarea
+            className="flex-1 resize-none min-h-0 bg-card"
+            disabled={isStreaming}
+          />
+        </ComposerPrimitive.Input>
+        {/* 上传图片按钮（暂存为待发送附件，随下次发送交给 agent 排版）*/}
+        <Button
+          variant="secondary"
+          disabled={isStreaming || busy}
+          onClick={() => fileInputRef.current?.click()}
+          className="self-end px-2.5"
+          aria-label="上传图片"
+          title="上传图片（随消息发送给 agent 排版）"
+        >
+          <ImagePlus className="w-4 h-4" />
+        </Button>
+        <ComposerPrimitive.Send asChild>
+          <Button
+            disabled={isStreaming}
+            className="self-end whitespace-nowrap"
+          >
+            {isStreaming ? "生成中…" : "发送"}
+          </Button>
+        </ComposerPrimitive.Send>
+      </ComposerPrimitive.Root>
+      {/* 输入框下方快捷键提示 */}
+      <div className="px-3 pb-2 text-xs text-muted-foreground">
+        Enter 发送 · Shift+Enter 换行
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // 气泡：保留 Duotone Poster 视觉
 // ============================================================
 
-function UserBubble() {
+function UserBubble({ messageId }: { messageId: string }) {
+  // 直接从 ChatItem 读附件渲染（与 AssistantBubble 读 toolCalls 同套路），
+  // 避免走 assistant-ui 的 image-slot，规避 API 形状不确定 + 重复渲染。
+  const attachments = useAgentStore(
+    (s) => s.chatMessages.find((m) => m.id === messageId)?.attachments
+  );
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const hasAtt = !!attachments && attachments.length > 0;
+
   return (
     <MessagePrimitive.Root className="max-w-[85%] px-3 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap self-end bg-primary text-primary-foreground font-medium">
+      {hasAtt && attachments && (
+        // 一排小图横排；超出可见区域横向滚动（不截断，全部可滑到），
+        // 点击单张在大图灯箱里查看，支持左右翻。
+        <div className="flex gap-1.5 mb-1 max-w-full overflow-x-auto">
+          {attachments.map((a, i) => (
+            <button
+              key={`${a.url}-${i}`}
+              type="button"
+              onClick={() => setLightboxIndex(i)}
+              className="shrink-0 overflow-hidden rounded-sm border border-primary-foreground/30 hover:opacity-80 transition-opacity"
+              aria-label={`查看大图 ${i + 1}`}
+            >
+              <img
+                src={a.url}
+                alt="上传图片"
+                className="block h-16 w-16 object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      )}
       <MessagePrimitive.Content />
+      {hasAtt && attachments && lightboxIndex !== null && (
+        <ImageLightbox
+          attachments={attachments}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onIndexChange={setLightboxIndex}
+        />
+      )}
     </MessagePrimitive.Root>
+  );
+}
+
+// ============================================================
+// ImageLightbox — 点击缩略图后的大图灯箱（shadcn Dialog 受控）
+// 多张时支持左右翻 + 键盘 ← →；Esc / 点遮罩 / 点 ✕ 关闭由 Radix 处理。
+// ============================================================
+function ImageLightbox({
+  attachments,
+  index,
+  onClose,
+  onIndexChange,
+}: {
+  attachments: MessageAttachment[];
+  index: number;
+  onClose: () => void;
+  onIndexChange: (i: number) => void;
+}) {
+  const count = attachments.length;
+  const a = attachments[index];
+  const go = (dir: -1 | 1) => onIndexChange((index + dir + count) % count);
+
+  // 键盘左右翻（Esc 关闭由 Radix Dialog 自带）
+  useEffect(() => {
+    if (count <= 1) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") go(-1);
+      else if (e.key === "ArrowRight") go(1);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, count]);
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <DialogContent className="max-w-[90vw] max-h-[90vh] gap-0 border-foreground bg-black/95 p-0 text-white overflow-hidden">
+        <DialogTitle className="sr-only">图片预览</DialogTitle>
+        <DialogDescription className="sr-only">
+          第 {index + 1} 张，共 {count} 张
+        </DialogDescription>
+        <div className="relative flex items-center justify-center">
+          <img
+            src={a.url}
+            alt="上传图片"
+            className="block max-h-[80vh] max-w-[88vw] object-contain"
+          />
+          {count > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={() => go(-1)}
+                className="absolute left-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-white/15 text-white hover:bg-white/30"
+                aria-label="上一张"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => go(1)}
+                className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-white/15 text-white hover:bg-white/30"
+                aria-label="下一张"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-black/50 px-2 py-0.5 text-[11px] text-white/90">
+                {index + 1} / {count} · {a.width}×{a.height}
+              </div>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

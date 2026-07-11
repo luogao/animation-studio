@@ -24,6 +24,7 @@ import type {
 import { useAgentStore, type ChatItem } from "../store/agentStore";
 import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
 import { useSelectionStore } from "../store/selectionStore";
+import { useComposerStore } from "../store/composerStore";
 import { formatSelectionContext } from "./selectionHelpers";
 import { matchPaletteIntent } from "./colorPalette";
 import { sendMessage } from "../hooks/useWebSocket";
@@ -98,7 +99,7 @@ function extractText(message: AppendMessage): string {
 }
 
 // ── /export 命令的本地处理（与 App.tsx 工具栏按钮一致）──
-function handleExportCommand(): void {
+async function handleExportCommand(): Promise<void> {
   const s = useProjectStore.getState();
   const result = buildExportEnvelope({
     projectId: s.projectId ?? "",
@@ -112,7 +113,7 @@ function handleExportCommand(): void {
     toast.error(result.error);
     return;
   }
-  const filename = downloadConfig(result.envelope);
+  const filename = await downloadConfig(result.envelope);
   toast.success(`已导出 ${filename}`, {
     description:
       result.envelope.status === "draft"
@@ -137,35 +138,44 @@ export function useStudioRuntime() {
       toThreadMessage(msg, idx === chatMessages.length - 1, isStreaming),
     onNew: async (message: AppendMessage) => {
       const text = extractText(message).trim();
-      if (!text) return;
+      const attachments = useComposerStore.getState().pendingImages;
+      const hasAtt = attachments.length > 0;
+      // 既无文字也无附件 → 不发送
+      if (!text && !hasAtt) return;
 
-      // ── 命令 ──
-      if (text === "/clear") {
-        clearChat();
-        return;
-      }
-      if (text === "/export") {
-        handleExportCommand();
-        return;
-      }
-
-      // ── 配色提案自动应用：用户说方案号/hex → 直接应用对应色卡（跳过手动确认）──
-      // matchPaletteIntent 保守 anchored 匹配，"第二个颜色再深一点"等不会误触发
-      const proposals = useAgentStore.getState().activeProposals;
-      if (proposals && proposals.length > 0) {
-        const m = matchPaletteIntent(text, proposals);
-        if (m) {
-          const p = proposals[m.index];
-          useAgentStore.getState().clearActiveProposals();
-          await sendMessage(
-            `使用配色方案 ${p.id}（${p.harmony}）为当前场景重新上色`
-          );
+      // ── 命令 / 配色提案自动应用：仅在无附件时生效（图片上传不该被 hijack）──
+      if (!hasAtt) {
+        if (text === "/clear") {
+          clearChat();
           return;
+        }
+        if (text === "/export") {
+          handleExportCommand();
+          return;
+        }
+
+        // matchPaletteIntent 保守 anchored 匹配，"第二个颜色再深一点"等不会误触发
+        const proposals = useAgentStore.getState().activeProposals;
+        if (proposals && proposals.length > 0) {
+          const m = matchPaletteIntent(text, proposals);
+          if (m) {
+            const p = proposals[m.index];
+            useAgentStore.getState().clearActiveProposals();
+            await sendMessage(
+              `使用配色方案 ${p.id}（${p.harmony}）为当前场景重新上色`
+            );
+            return;
+          }
         }
       }
 
-      // ── 普通对话：注入选中元素上下文后发送 ──
-      let augmentedText = text;
+      // ── 确定最终文本（仅有附件时给默认 caption）──
+      let body = text;
+      if (!body && hasAtt) {
+        body = "上传了图片，请加入场景并排版";
+      }
+
+      // ── 注入选中元素上下文 ──
       const sel = useSelectionStore.getState();
       if (sel.isEditMode && sel.selectedActorIds.size > 0) {
         const projectStore = useProjectStore.getState();
@@ -175,10 +185,13 @@ export function useStudioRuntime() {
         );
         const ctx = formatSelectionContext(selectedActors);
         if (ctx) {
-          augmentedText = ctx + "\n\n" + text;
+          body = ctx + "\n\n" + body;
         }
       }
-      await sendMessage(augmentedText);
+
+      await sendMessage(body, hasAtt ? attachments : undefined);
+      // 发出成功后清空暂存附件
+      useComposerStore.getState().clear();
     },
   };
 

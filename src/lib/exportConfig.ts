@@ -6,11 +6,49 @@
 // 返回文件名让调用方反馈给用户（toast）。
 // ============================================================
 
-import type { ExportedSceneConfig } from "../types/scene";
+import type { ExportedSceneConfig, SceneConfig } from "../types/scene";
 import { slugify } from "../types/scene";
 
-export function downloadConfig(envelope: ExportedSceneConfig): string {
-  const json = JSON.stringify(envelope, null, 2);
+// ------------------------------------------------------------
+// /uploads/ → data URI 内联
+// 预览/动画用同源 /uploads/...（快、不污染 canvas）；导出给外部 Remotion 时
+// 必须自包含，故把 /uploads/ 的 image actor.src 异步转成 data URI。
+// 失败则保留原 URL（并告警），不阻断导出。
+// ------------------------------------------------------------
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("读取 blob 失败"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function inlineUploadImages(config: SceneConfig): Promise<SceneConfig> {
+  const actors = await Promise.all(
+    config.actors.map(async (a) => {
+      if (a.type === "image" && a.src && a.src.startsWith("/uploads/")) {
+        try {
+          const res = await fetch(a.src);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const dataUrl = await blobToDataUrl(await res.blob());
+          return { ...a, src: dataUrl };
+        } catch (err) {
+          console.warn(`[export] 内联图片失败 ${a.src}:`, err);
+        }
+      }
+      return a;
+    })
+  );
+  return { ...config, actors };
+}
+
+export async function downloadConfig(
+  envelope: ExportedSceneConfig
+): Promise<string> {
+  const config = await inlineUploadImages(envelope.config);
+  const json = JSON.stringify({ ...envelope, config }, null, 2);
   const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
 

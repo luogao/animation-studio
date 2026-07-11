@@ -3,6 +3,7 @@ import { runAgent } from "./agent.js";
 import { insertMessage } from "./db/messages.js";
 import { readLlmConfig } from "./llm-config.js";
 import type { SceneConfig } from "../src/types/scene.js";
+import type { MessageAttachment } from "../src/types/message.js";
 import {
   subscribe,
   unsubscribeWs,
@@ -74,11 +75,12 @@ export function handleWsMessage(ws: WebSocket, raw: string): void {
     }
 
     case "chat": {
-      const { text, baseConfig, projectId, baseVersionId } = (msg.payload ?? {}) as {
+      const { text, baseConfig, projectId, baseVersionId, attachments } = (msg.payload ?? {}) as {
         text?: string;
         baseConfig?: SceneConfig;
         projectId?: string;
         baseVersionId?: string | null;
+        attachments?: MessageAttachment[];
       };
       if (!text || !baseConfig) {
         send(ws, { type: "error", payload: { message: "chat payload 需要 { text, baseConfig }" } });
@@ -120,7 +122,12 @@ export function handleWsMessage(ws: WebSocket, raw: string): void {
       // 之前是客户端 sendMessage 里 fetch POST，但那是 fire-and-forget，
       // 客户端刷新/断开有竞态。挪到这里保证：只要 WS chat 收到，user 消息就入库。
       try {
-        insertMessage({ projectId, role: "user", content: text });
+        insertMessage({
+          projectId,
+          role: "user",
+          content: text,
+          attachments: attachments && attachments.length > 0 ? attachments : undefined,
+        });
       } catch (err) {
         console.error(
           `[ws] persist user message failed for ${projectId}: ${
@@ -163,7 +170,8 @@ export function handleWsMessage(ws: WebSocket, raw: string): void {
                 isError: res.isError,
               },
             }),
-        }
+        },
+        attachments && attachments.length > 0 ? attachments : []
       );
       break;
     }

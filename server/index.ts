@@ -21,6 +21,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleWsMessage, handleWsClose } from "./wsHandler.js";
 import { apiRouter } from "./routes.js";
+import { uploadsRouter } from "./uploads.js";
+import { UPLOADS_DIR } from "./db/index.js";
 // 副作用 import：启动时初始化 DB（建目录 + 建表）
 import "./db/index.js";
 
@@ -38,7 +40,13 @@ async function main() {
   const httpServer = createHttpServer(app);
 
   // ---- REST API ----
+  // uploads 路由先挂（独立 16MB body 解析器），否则会被 /api 的 5MB 解析器拦截。
+  app.use("/api/uploads", uploadsRouter);
   app.use("/api", apiRouter);
+
+  // ---- 上传文件同源静态服务 ----
+  // 挂在前端服务之前，保证 dev/prod 都能经 /uploads/<file> 取图（导出不污染 canvas）。
+  app.use("/uploads", express.static(UPLOADS_DIR));
 
   // ---- WebSocket Server ----
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useAgentStore, type RunState, type ChatItem } from "../store/agentStore";
 import { useProjectStore, selectPreviewConfig } from "../store/projectStore";
 import type { SceneConfig } from "../types/scene";
+import type { MessageAttachment } from "../types/message";
 import { parsePalettes } from "../lib/colorPalette";
 import { isLlmConfigured } from "../lib/llmConfigStatus";
 import { openLlmConfig } from "../components/LlmConfigDialog";
@@ -299,7 +300,10 @@ async function reloadAfterDone(projectId: string): Promise<void> {
 // 返回 Promise 让 ChatPanel 知道何时 WS 包已发出（不等回复）
 // ============================================================
 
-export async function sendMessage(text: string): Promise<void> {
+export async function sendMessage(
+  text: string,
+  attachments?: MessageAttachment[]
+): Promise<void> {
   const project = useProjectStore.getState();
   const agent = useAgentStore.getState();
 
@@ -334,7 +338,14 @@ export async function sendMessage(text: string): Promise<void> {
 
   // 3. user 消息：本地占位（服务端会在收到 WS chat 后入库，
   //    客户端不再 POST，避免 fire-and-forget 竞态）
-  agent.addMessage({ id: crypto.randomUUID(), role: "user", content: text });
+  const userAttachments =
+    attachments && attachments.length > 0 ? attachments : undefined;
+  agent.addMessage({
+    id: crypto.randomUUID(),
+    role: "user",
+    content: text,
+    attachments: userAttachments,
+  });
 
   // 4. assistant 占位 + 进入流式
   agent.addMessage({ id: crypto.randomUUID(), role: "assistant", content: "" });
@@ -348,6 +359,7 @@ export async function sendMessage(text: string): Promise<void> {
       projectId,
       baseVersionId: headVersionId,
       baseConfig: committedConfig,
+      attachments: userAttachments,
     },
   });
 
