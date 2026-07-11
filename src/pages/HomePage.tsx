@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowRight, Sparkles } from "lucide-react";
 import type { SceneConfig } from "../types/scene";
+import { setPendingPrompt } from "../lib/pendingPrompt";
 
 interface ProjectListItem {
   id: string;
@@ -61,7 +62,13 @@ export default function HomePage() {
       const title = raw ? raw.slice(0, 50) + (raw.length > 50 ? "…" : "") : undefined;
       await createProject(title);
       const projectId = useProjectStore.getState().projectId;
-      if (projectId) navigate(`/p/${projectId}`);
+      if (projectId) {
+        // 首页输入的完整描述暂存到 sessionStorage；项目标题只取前 50 字，
+        // 但发给 agent 的是全文。StudioPage 加载完成后自动消费并作为第一条
+        // 对话发送。raw 为空（直接点开始创作）则不暂存，保持原空白进入行为。
+        if (raw) setPendingPrompt({ projectId, prompt: raw });
+        navigate(`/p/${projectId}`);
+      }
     } catch (err) {
       console.error("[home] create failed:", err);
     } finally {
