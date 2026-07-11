@@ -11,6 +11,14 @@
 import type { SceneConfig } from "../types/scene";
 import { type GifFrame } from "./gifEncoder";
 import { usePreviewStore } from "../store/previewStore";
+import {
+  Output,
+  BufferTarget,
+  Mp4OutputFormat,
+  CanvasSource,
+  QUALITY_HIGH,
+  getFirstEncodableVideoCodec,
+} from "mediabunny";
 
 // ------------------------------------------------------------
 // 定位画布 SVG
@@ -31,13 +39,17 @@ function getCanvasSvg(): SVGSVGElement {
 // SVG → Canvas 渲染
 // ------------------------------------------------------------
 
-function svgToCanvas(
+// 把某一帧的 SVG 渲染到给定 ctx（不新建 canvas）。
+// GIF/WebM 经 svgToCanvas 包一层拿 ImageData；MP4 直接画到固定 canvas
+// 喂给 mediabunny（流式，省内存）。
+async function drawSvgFrame(
   svgEl: SVGSVGElement,
   width: number,
   height: number,
   background: string,
+  ctx: CanvasRenderingContext2D,
   scale = 1
-): Promise<ImageData> {
+): Promise<void> {
   // 克隆 SVG 并移除编辑模式专属元素（选取框、点击热区等），
   // 避免导出文件中出现 data-edit-only 标记的 UI 叠加层。
   const clone = svgEl.cloneNode(true) as SVGSVGElement;
@@ -59,21 +71,16 @@ function svgToCanvas(
   bgRect.setAttribute("fill", background);
   clone.insertBefore(bgRect, clone.firstChild);
 
-  const canvas = document.createElement("canvas");
-  canvas.width = outW;
-  canvas.height = outH;
-  const ctx = canvas.getContext("2d")!;
-
   const svgData = new XMLSerializer().serializeToString(clone);
   const blob = new Blob([svgData], { type: "image/svg+xml" });
   const url = URL.createObjectURL(blob);
 
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       ctx.drawImage(img, 0, 0, outW, outH);
       URL.revokeObjectURL(url);
-      resolve(ctx.getImageData(0, 0, outW, outH));
+      resolve();
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -81,6 +88,24 @@ function svgToCanvas(
     };
     img.src = url;
   });
+}
+
+function svgToCanvas(
+  svgEl: SVGSVGElement,
+  width: number,
+  height: number,
+  background: string,
+  scale = 1
+): Promise<ImageData> {
+  const outW = Math.round(width * scale);
+  const outH = Math.round(height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = outW;
+  canvas.height = outH;
+  const ctx = canvas.getContext("2d")!;
+  return drawSvgFrame(svgEl, width, height, background, ctx, scale).then(() =>
+    ctx.getImageData(0, 0, outW, outH)
+  );
 }
 
 // ------------------------------------------------------------
@@ -279,6 +304,82 @@ export async function exportGif(
   const gifData = await encodeGifInWorker(gifFrames, outW, outH);
   const blob = new Blob([gifData.buffer as ArrayBuffer], { type: "image/gif" });
   downloadBlob(blob, `${slug(config)}.gif`);
+}
+
+// ------------------------------------------------------------
+// 导出 MP4 视频（H.264，WebCodecs via mediabunny）
+// ------------------------------------------------------------
+//
+// 与 WebM/GIF 的关键差异：
+// - 不预渲染全部帧到内存，而是流式：seek 一帧 → 画到 canvas → 喂给 mediabunny
+//   的 CanvasSource。CanvasSource 内部跑 WebCodecs VideoEncoder（异步硬件编码，
+//   不阻塞主线程），source.add 自带背压 → 内存只占 1 帧（对比 WebM/GIF 先把
+//   ImageData[] 全攒进内存，1440×810、10s/30fps 约 1.35GB）。
+// - 因此不需要 worker（对比 gifEncoder.worker.ts 的纯软件 LZW）。
+// - 能力检测双保险：无 VideoEncoder（老浏览器）或无法编码 avc → 抛错，UI 层
+//   toast 提示换浏览器，不静默回退（避免下载到 webm 让人困惑）。
+
+export async function exportMp4(
+  config: SceneConfig,
+  onProgress?: (phase: string) => void
+): Promise<void> {
+  if (typeof VideoEncoder === "undefined") {
+    throw new Error(
+      "当前浏览器不支持 MP4 导出（无 WebCodecs），请用 Chrome/Edge 或改用 WebM"
+    );
+  }
+
+  const { width, height, duration, background } = config;
+  const fps = 30;
+
+  // 用与实际编码一致的约束（尺寸 + 码率）探测可用 codec，避免配置完才发现编不了。
+  const format = new Mp4OutputFormat();
+  const codec = await getFirstEncodableVideoCodec(format.getSupportedVideoCodecs(), {
+    width,
+    height,
+    bitrate: QUALITY_HIGH,
+  });
+  if (!codec) {
+    throw new Error("当前浏览器无法编码 H.264，请用 Chrome/Edge 或改用 WebM");
+  }
+
+  const svgEl = getCanvasSvg();
+  const controller = usePreviewStore.getState().timelineController;
+  if (!controller) throw new Error("Timeline 未就绪，请先播放动画后再导出");
+
+  const output = new Output({ format, target: new BufferTarget() });
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+  const source = new CanvasSource(canvas, { codec, bitrate: QUALITY_HIGH });
+  output.addVideoTrack(source, { frameRate: fps });
+
+  await output.start();
+  controller.pause();
+
+  const total = Math.ceil(duration * fps);
+  onProgress?.(`渲染 ${total} 帧...`);
+  for (let i = 0; i < total; i++) {
+    const t = i / fps;
+    controller.seek(t);
+    // 等一微 tick 让 GSAP seek 同步更新 DOM（沿用 captureFrames 的保险）
+    await new Promise((r) => setTimeout(r, 0));
+    // 先把这一帧画好，add 才能在调用瞬间抓到正确的 canvas 状态
+    await drawSvgFrame(svgEl, width, height, background, ctx);
+    await source.add(t, 1 / fps);
+    if (i % 30 === 0 || i === total - 1) {
+      onProgress?.(`渲染中 ${i + 1}/${total}`);
+    }
+  }
+  controller.seek(0);
+
+  onProgress?.("编码 MP4...");
+  await output.finalize();
+
+  const buffer = output.target.buffer;
+  if (!buffer) throw new Error("MP4 编码失败：输出为空");
+  downloadBlob(new Blob([buffer], { type: "video/mp4" }), `${slug(config)}.mp4`);
 }
 
 // ------------------------------------------------------------
