@@ -106,6 +106,7 @@ interface Actor {
   innerRatio?: number;// star 内/外半径比 0-1，默认 0.4
   d?: string;         // path：原始 SVG path data（本地坐标系）
   src?: string;       // image：图片 URL（同源 /uploads/... 或 data URI）
+  split?: "char" | "word"; // 文字拆分（SplitText），仅 text：char=逐字, word=逐词。配 phase.stagger 逐字/词动画
 }
 
 interface Connection {
@@ -124,6 +125,10 @@ interface Phase {
   fromProps?: Record<string, any>; // fromTo 起始状态（仅 action="tween"）
   stagger?: number | { each?: number; from?: number | string; amount?: number; ease?: string };
   tweenMode?: "to" | "from" | "fromTo";  // 默认 "to"
+  // 插件能力（gsap 3.13+，渲染层已注册 MotionPath / DrawSVG / CustomEase）
+  motionPath?: { path: string; relative?: boolean; autoRotate?: boolean | number; curviness?: number; alignOrigin?: [number, number] };
+  drawSVG?: string;       // 描线可见段，如 "0% 100%"
+  customEase?: string;    // cubic-bezier 四点，如 ".17,.67,.83,.67"，覆盖 ease
 }
 
 interface Effect {
@@ -197,6 +202,49 @@ interface Palette {
 2. 弹入: { action:"tween", tweenMode:"from", target:"title", props:{ scale:0, opacity:0 }, ease:"back.out(1.7)" }
 3. 依次入场: { action:"tween", target:["a","b","c"], stagger:0.2, tweenMode:"from", props:{ y:50, opacity:0 } }
 4. 翻转: { action:"tween", tweenMode:"fromTo", target:"card", fromProps:{ rotation:0 }, props:{ rotation:180 }, transformOrigin:"center center" }
+
+### 插件能力（渲染层已接入 MotionPath / DrawSVG / CustomEase / SplitText）
+除上面的 props 透传，四个 GSAP 插件能力可直接用（前三个是 phase 显式字段，SplitText 是 text actor 的 split 字段）：
+
+#### MotionPath（沿路径运动）— phase.motionPath
+让 actor 沿 SVG 路径运动。设 phase.motionPath 即触发（通常配 action:"tween"）。
+- **坐标语义（重要）**：relative 默认 **true** —— path 坐标是相对 actor【当前位置】的位移，不是画布绝对坐标。写 "M0,0 C100,-50 300,50 400,0" = 从当前点出发，曲线先上后下，终点偏移 (+400,0)。你不需要知道 actor 的绝对 x/y。
+- autoRotate:true 让 actor 沿路径切线自动转向（朝向运动方向）。
+- curviness(0-2) 控制平滑度；alignOrigin 默认 [0.5,0.5]（元素中心贴路径）。
+- 示例（弹珠沿弧线飞）: { action:"tween", target:"ball", duration:2, motionPath:{ path:"M0,0 C150,-200 350,-200 500,0", autoRotate:true } }
+
+#### DrawSVG（描线动画）— phase.drawSVG
+让 SVG 描边"画出来"。设 phase.drawSVG 即触发。
+- **值 = 可见段**（不是 from→to），格式 "起% 止%"：
+  - "0% 100%" = 完整描线
+  - "20% 80%" = 只显示中段（两端空）
+- **作用对象**：
+  - **path actor / 形状 actor**：用 action:"tween" + drawSVG，自动选中其描边形状（path/box/circle/polygon/star/diamond 的 stroke）。
+  - **连接线**：用 action:"connect" + drawSVG，自动选中 <line>（比旧的手搓描线更平滑）。
+- actor 必须有 stroke（path/box/circle 等默认有；text/image 无效）。
+- 示例（路径绘制）: { action:"tween", target:"road", duration:1.5, drawSVG:"0% 100%" }
+- 示例（连接线绘制）: { action:"connect", target:"nodeB", duration:1, drawSVG:"0% 100%" }
+
+#### CustomEase（自定义缓动）— phase.customEase
+任意 cubic-bezier 四点曲线。设 phase.customEase 即覆盖 ease。
+- 值是四点字符串如 ".17,.67,.83,.67"（同 CSS cubic-bezier 的四个参数）。
+- 适用于任何 action（enter/exit/pulse/tween/connect 都吃）。
+- 示例（弹性入场）: { action:"enter", target:"card", effect:"scale-pop", customEase:".34,1.56,.64,1" }
+- 与 ease 二选一：customEase 优先。
+
+#### SplitText（逐字/逐词文字动画）— actor.split（仅 type:"text"）
+让文字按字符或单词拆分，每个单元独立动画（逐字/词入场、错峰）。给 text actor 设 split 字段即触发。
+- **char** = 逐字，**word** = 逐词。
+- 拆分后该 text 的 phase 动画作用到每个字/词单元；配 **phase.stagger**（如 0.05）实现逐字错峰。
+- 渲染层自动等字体加载完再拆分（避免测量错位），你无需处理时机。
+- 仅作用于整体变换 action（enter/exit/pulse/shake/highlight/tween）；**不与 motionPath / drawSVG 组合**。
+- 示例（标题逐字弹入）: actor { id:"title", type:"text", label:"Hello World", split:"char", fontSize:64 } + phase { action:"enter", target:"title", effect:"scale-pop", stagger:0.05, duration:0.8 }
+- 示例（逐词淡入）: actor split:"word" + phase { action:"enter", target:"sub", effect:"fade", stagger:0.1 }
+
+#### 渲染层能力边界（已接入 / 未接入）
+- ✅ 已接入：MotionPath（路径运动）、DrawSVG（描线，支持 path/line/polygon/rect/circle/ellipse）、CustomEase（自定义缓动）、SplitText（逐字/词文字动画，仅 text actor + char/word）。
+- ❌ 未接入：MorphSVG（形状变形）、ScrollTrigger（非滚动场景）。SplitText 的 line 拆分 / mask 遮罩暂未暴露。
+- 想用插件效果时，可先调 gsap-plugins skill 查确切 API，再用上面的显式字段落地。
 
 ### 选择器技巧
 - 单个 actor: target: "actorId"
