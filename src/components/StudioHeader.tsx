@@ -14,14 +14,33 @@ import { buildExportEnvelope, downloadConfig } from "../lib/exportConfig";
 import { exportVideo, exportGif, exportMp4 } from "../lib/exportMedia";
 import { toast } from "sonner";
 import { useState, useRef, useEffect } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export function StudioHeader() {
   const navigate = useNavigate();
   const projectTitle = useProjectStore((s) => s.projectTitle);
   const draft = useProjectStore((s) => s.draft);
   const versions = useProjectStore((s) => s.versions);
+  const headVersionId = useProjectStore((s) => s.headVersionId);
   const commitDraft = useProjectStore((s) => s.commitDraft);
   const discardDraft = useProjectStore((s) => s.discardDraft);
+  const rollbackTo = useProjectStore((s) => s.rollbackTo);
   const isEditMode = useSelectionStore((s) => s.isEditMode);
   const toggleEditMode = useSelectionStore((s) => s.toggleEditMode);
   const loading = useProjectStore((s) => s.loading);
@@ -30,6 +49,13 @@ export function StudioHeader() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
+
+  // ── 版本回滚 ──
+  const [rollbackTarget, setRollbackTarget] = useState<string>("");
+  const [confirmRollback, setConfirmRollback] = useState(false);
+  useEffect(() => {
+    setRollbackTarget(headVersionId ?? "");
+  }, [headVersionId]);
 
   useEffect(() => {
     if (!exportOpen) return;
@@ -95,14 +121,33 @@ export function StudioHeader() {
   };
 
   // ── 版本信息 ──
-  const headVersion = versions
+  const committedVersions = versions
     .filter((v) => v.status === "committed")
-    .sort((a, b) => b.sequence - a.sequence)[0];
+    .sort((a, b) => b.sequence - a.sequence);
+  const headVersion = committedVersions[0];
   const versionLabel = draft
     ? `v${(headVersion?.sequence ?? 0) + 1} 草稿`
     : headVersion
       ? `v${headVersion.sequence}`
       : "";
+
+  // 回滚目标：选中一个非 head 的 committed 版本才可回滚
+  const canRollback =
+    !!rollbackTarget &&
+    rollbackTarget !== headVersionId &&
+    committedVersions.length > 1;
+  const rollbackTargetVersion = committedVersions.find(
+    (v) => v.id === rollbackTarget
+  );
+  // Radix Select 要求 value 命中某个 SelectItem，加载前先给空串走 placeholder
+  const selectValue = committedVersions.some((v) => v.id === rollbackTarget)
+    ? rollbackTarget
+    : "";
+
+  const handleConfirmRollback = async () => {
+    setConfirmRollback(false);
+    if (rollbackTarget) await rollbackTo(rollbackTarget);
+  };
 
   return (
     <header className="studio-header flex items-center gap-2 px-4 py-2 border-b-2 border-foreground bg-paper shrink-0">
@@ -146,6 +191,43 @@ export function StudioHeader() {
             size="sm"
           >
             丢弃
+          </Button>
+        </div>
+      )}
+
+      {/* 版本回滚：下拉选目标 committed 版本 → 回滚 */}
+      {committedVersions.length > 0 && (
+        <div className="flex items-center gap-1.5 ml-2">
+          <Select
+            value={selectValue}
+            onValueChange={setRollbackTarget}
+            disabled={loading}
+          >
+            <SelectTrigger
+              size="sm"
+              className="h-8 text-xs w-32"
+              title="选择回滚目标版本"
+            >
+              <SelectValue placeholder="选择版本" />
+            </SelectTrigger>
+            <SelectContent>
+              {committedVersions.map((v) => (
+                <SelectItem key={v.id} value={v.id}>
+                  v{v.sequence}
+                  {v.label ? ` · ${v.label}` : ""}
+                  {v.id === headVersionId ? "  (head)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            onClick={() => setConfirmRollback(true)}
+            disabled={!canRollback || loading}
+            variant="outline"
+            size="sm"
+          >
+            回滚
           </Button>
         </div>
       )}
@@ -206,6 +288,27 @@ export function StudioHeader() {
           )}
         </div>
       </div>
+
+      {/* ── 回滚确认对话框 ── */}
+      <AlertDialog open={confirmRollback} onOpenChange={setConfirmRollback}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              回滚到 v{rollbackTargetVersion?.sequence ?? "?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              会先提交当前草稿（如有），再以目标版本为父开一个新的
+              committed 分支。历史不会被删除。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmRollback}>
+              确认
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </header>
   );
 }
