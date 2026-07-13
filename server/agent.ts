@@ -679,7 +679,12 @@ ${JSON.stringify(currentConfig, null, 2)}
         model: resolveModel(),
         systemPrompt: buildSystemPrompt(projectContext),
         mcpServers: { studio: mcpServer },
-        tools: [],
+        // 只放行内置 Skill 工具：让 agent 能按需调用 .claude/skills/ 下的知识技能
+        // （gsap-* 全套 / disney-12-principles / design-atlas）。prompts.ts 已引导
+        // agent 在不确定 GSAP API 用法时调用对应 skill；setting.agent.json 的
+        // permissions 也已 allow Skill。其余内置工具（Bash/Read/Write/Edit/…）仍
+        // 关闭——场景修改只能走上面的 MCP 工具，skill 只读知识不碰文件系统。
+        tools: ["Skill"],
         maxTurns: 50,
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
