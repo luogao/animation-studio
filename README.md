@@ -4,6 +4,12 @@
 
 > 视频里把它叫做「Vibe Animation」，但代码库与产品名统一为 **Animation Studio**。
 
+![Animation Studio 工作台演示](assets/studio-overview.gif)
+
+> 一句话生成的示例动画（下图为工具直接导出的 GIF）：
+>
+> ![NEURAL // NEXUS](assets/neural-nexus.gif)
+
 ## 快速开始
 
 ```bash
@@ -28,6 +34,8 @@ npm run dev
 ```
 
 ## 核心特性
+
+![工作台界面：左侧对话 · 右侧画布实时预览 · 下方时间轴](assets/studio-workspace.png)
 
 **对话式设计**
 - **实时流式**：Agent 的思考过程（thinking）、工具调用、文本生成全部实时可见
