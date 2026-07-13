@@ -52,6 +52,8 @@ export interface Actor {
   innerRatio?: number; // star：内/外半径比 0-1，默认 0.4
   d?: string; // path：原始 SVG path data（本地坐标系）
   src?: string; // image：图片 URL（同源 /uploads/... 或 data URI）
+  /** 文字拆分模式（SplitText）。存在时该 text 的 phase 动画作用到拆分子元素（逐字/词 stagger）。仅 type="text" */
+  split?: "char" | "word";
 }
 
 export interface Connection {
@@ -66,6 +68,20 @@ export interface StaggerConfig {
   from?: number | "start" | "center" | "end" | "edges" | "random";
   ease?: string;
   amount?: number;
+}
+
+/** MotionPath 配置（phase.motionPath，沿 SVG 路径运动，MotionPathPlugin） */
+export interface MotionPathConfig {
+  /** SVG path data 字符串，如 "M0,0 C100,-50 300,50 400,0" */
+  path: string;
+  /** 相对当前元素位置解释 path（默认 true：path 是"相对位移"，非画布绝对坐标） */
+  relative?: boolean;
+  /** 沿路径切线自动旋转（朝向运动方向） */
+  autoRotate?: boolean | number;
+  /** 路径平滑度 0-2，默认 1 */
+  curviness?: number;
+  /** 对齐原点 [x, y] 0-1，默认 [0.5, 0.5]（元素中心贴路径） */
+  alignOrigin?: [number, number];
 }
 
 export interface Phase {
@@ -85,6 +101,17 @@ export interface Phase {
   stagger?: number | StaggerConfig;
   /** GSAP 方法：to（默认，当前→目标）、from（props→当前）、fromTo（fromProps→props） */
   tweenMode?: "to" | "from" | "fromTo";
+
+  // === 插件能力（gsap 3.13+ 免费插件，渲染层已注册）===
+  /** 沿 SVG 路径运动（MotionPathPlugin）。通常配 action: "tween" */
+  motionPath?: MotionPathConfig;
+  /**
+   * 描线动画的"可见段"（DrawSVGPlugin），如 "0% 100%" / "20% 80%"。
+   * 作用在 target 的带 stroke 形状（path actor 描边、或连接线 line）。
+   */
+  drawSVG?: string;
+  /** 自定义 cubic-bezier 缓动，四点字符串如 ".17,.67,.83,.67"。覆盖 ease */
+  customEase?: string;
 }
 
 export interface Effect {

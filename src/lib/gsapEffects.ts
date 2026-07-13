@@ -16,7 +16,7 @@ type TweenVars = gsap.TweenVars;
 export function getEnterEffect(
   name: string | undefined,
   duration: number,
-  ease?: string
+  ease?: gsap.TweenVars["ease"]
 ): TweenVars {
   const e = ease ?? "power2.out";
   switch (name) {
@@ -50,7 +50,7 @@ export function getEnterEffect(
 
 export function getExitEffect(
   duration: number,
-  ease?: string
+  ease?: gsap.TweenVars["ease"]
 ): TweenVars {
   return {
     opacity: 0,
@@ -66,7 +66,7 @@ export function getExitEffect(
 
 export function getPulseEffect(
   duration: number,
-  ease?: string
+  ease?: gsap.TweenVars["ease"]
 ): TweenVars {
   return {
     scale: 1.15,
@@ -110,10 +110,22 @@ export function getHighlightEffect(duration: number): TweenVars {
 
 export function getDrawLineTween(
   duration: number,
-  ease?: string
+  ease?: gsap.TweenVars["ease"]
 ): { from: TweenVars; to: TweenVars } {
   return {
     from: { strokeDasharray: 1, strokeDashoffset: 1, immediateRender: true },
     to: { strokeDashoffset: 0, duration, ease: ease ?? "power2.inOut" },
   };
+}
+
+// ------------------------------------------------------------
+// CustomEase 确定性命名 —— 数据指纹
+// CustomEase.create(name, data) 是全局注册（同名覆盖），且 ctx.revert()
+// 不会清理它。每次 chat 重建 timeline 都会重跑 create，若用随机名会累积
+// 泄漏。用数据指纹做确定性命名：相同曲线 → 相同名 → 幂等覆盖，无增长。
+// ------------------------------------------------------------
+
+export function getCustomEaseName(data: string): string {
+  const slug = data.replace(/[^0-9a-zA-Z]+/g, "_").replace(/^_+|_+$/g, "");
+  return `ce_${slug}`;
 }

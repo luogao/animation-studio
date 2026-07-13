@@ -115,19 +115,37 @@ export function ActorRenderer({ actor }: Props) {
       {/* ── GSAP 目标层（不要放 data-edit-only 元素在这里）── */}
       <g data-actor-id={id} data-actor-type={type} style={glowStyle(glow)}>
         {type === "text" ? (
-          <text
+          // foreignObject 渲染 HTML 文字（SplitText 只拆 HTML，不支持 SVG <text>）。
+          // React 在 foreignObject 内自动用 HTML 命名空间创建 <div>，无需显式 xmlns。
+          // overflow:visible 防止 estimateTextWidth 偏小时裁剪文字。
+          // 垂直居中用 flex alignItems:center 替代原 dominantBaseline:middle。
+          <foreignObject
             x={0}
-            y={effH / 2}
-            textAnchor="start"
-            dominantBaseline="middle"
-            fill={actor.color ?? FALLBACK_ACTOR_COLOR}
-            fontSize={actor.fontSize ?? 14}
-            fontWeight={actor.fontWeight ?? 500}
-            fontFamily={fontFamily ?? "var(--font-sans)"}
+            y={0}
+            width={effW}
+            height={effH}
+            style={{ overflow: "visible" }}
             data-actor-part="text"
           >
-            {actor.label ?? ""}
-          </text>
+            <div
+              data-text-root
+              style={{
+                width: effW,
+                height: effH,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                fontSize: actor.fontSize ?? 14,
+                fontWeight: actor.fontWeight ?? 500,
+                fontFamily: fontFamily ?? "var(--font-sans)",
+                color: actor.color ?? FALLBACK_ACTOR_COLOR,
+                lineHeight: 1,
+                whiteSpace: "pre",
+              }}
+            >
+              {actor.label ?? ""}
+            </div>
+          </foreignObject>
         ) : (
           renderActorShape(type, shapeOpts)
         )}

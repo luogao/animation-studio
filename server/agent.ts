@@ -155,6 +155,12 @@ const actorShape = {
   innerRatio: z.number().optional().describe("star 内/外半径比 0-1，默认 0.4"),
   d: z.string().optional().describe("path 类型的原始 SVG path data（本地坐标系）"),
   src: z.string().optional().describe("image 类型的图片 URL（同源 /uploads/... 或 data URI）"),
+  split: z
+    .enum(["char", "word"])
+    .optional()
+    .describe(
+      "文字拆分（SplitText）：char=逐字, word=逐词。仅 type='text'。设了之后该 text 的 phase 动画逐字/词错峰（配 stagger）"
+    ),
 };
 
 const connectionShape = {
@@ -225,6 +231,38 @@ const phaseShape = {
     .describe(
       "GSAP 方法：to（默认，当前状态→props）、from（props→当前状态）、fromTo（fromProps→props）。仅 action=tween 时生效"
     ),
+
+  // === 插件能力（gsap 3.13+ 免费插件，渲染层已注册）===
+  motionPath: z
+    .object({
+      path: z.string().describe('SVG path data，如 "M0,0 C100,-50 300,50 400,0"'),
+      relative: z
+        .boolean()
+        .optional()
+        .describe("相对当前元素位置解释 path（默认 true：path 是相对位移，非画布绝对坐标）"),
+      autoRotate: z
+        .union([z.boolean(), z.number()])
+        .optional()
+        .describe("沿路径切线自动旋转（朝向运动方向）"),
+      curviness: z.number().optional().describe("路径平滑度 0-2，默认 1"),
+      alignOrigin: z
+        .array(z.number())
+        .length(2)
+        .optional()
+        .describe("对齐原点 [x,y] 0-1，默认 [0.5,0.5]（元素中心贴路径）"),
+    })
+    .optional()
+    .describe("沿 SVG 路径运动（MotionPath）。path 坐标默认相对当前元素位置"),
+  drawSVG: z
+    .string()
+    .optional()
+    .describe(
+      '描线可见段，如 "0% 100%" / "20% 80%"。作用在 target 的带 stroke 形状（path actor 描边或连接线 line）'
+    ),
+  customEase: z
+    .string()
+    .optional()
+    .describe('自定义 cubic-bezier 四点，如 ".17,.67,.83,.67"，覆盖 ease 字段'),
 };
 
 const effectShape = {
