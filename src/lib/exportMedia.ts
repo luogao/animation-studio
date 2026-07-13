@@ -39,6 +39,109 @@ function getCanvasSvg(): SVGSVGElement {
 // SVG → Canvas 渲染
 // ------------------------------------------------------------
 
+// foreignObject → SVG <text>：导出防 canvas 污染
+//
+// text actor 经 <foreignObject> 渲染 HTML 文字（SplitText 只能拆 HTML，不支持
+// SVG <text>）。但 SVG 经 <img>+drawImage 栅格化时，含 <foreignObject> 会让
+// canvas 被浏览器标记为 tainted（origin-unclean），随后 getImageData /
+// putImageData 全部抛 SecurityError —— 即任何带文字的场景都导不出。这里在
+// 栅格化前把所有 foreignObject 替换成等价纯 SVG <text>，根除污染源。
+//
+// 克隆节点不在 DOM 中、没有布局，位置/字号必须从原始 svgEl 读取；逐帧 seek
+// 后原始 DOM 的 SplitText 字符已同步到该帧状态，所以逐字动画在导出里得以保留。
+function replaceTextForeignObjects(
+  originalSvg: SVGSVGElement,
+  clone: SVGSVGElement
+): void {
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const svgRect = originalSvg.getBoundingClientRect();
+  // 视口 CSS 像素 → SVG user unit 的缩放（PreviewCanvas 常把 1440×810 缩放显示）
+  const vb = originalSvg.viewBox.baseVal;
+  const sx =
+    svgRect.width > 0
+      ? ((vb && vb.width) || originalSvg.width.baseVal.value) / svgRect.width
+      : 1;
+  const sy =
+    svgRect.height > 0
+      ? ((vb && vb.height) || originalSvg.height.baseVal.value) / svgRect.height
+      : 1;
+
+  const cloneFos = Array.from(
+    clone.querySelectorAll('foreignObject[data-actor-part="text"]')
+  );
+  const origFos = Array.from(
+    originalSvg.querySelectorAll('foreignObject[data-actor-part="text"]')
+  );
+
+  cloneFos.forEach((foClone, i) => {
+    const foOrig = origFos[i];
+    const parent = foClone.parentNode;
+    if (!parent) return;
+
+    const frag = document.createDocumentFragment();
+    if (foOrig) {
+      const root = foOrig.querySelector("[data-text-root]") as HTMLElement | null;
+      if (root) {
+        const cs = getComputedStyle(root);
+        const fontSize = parseFloat(cs.fontSize) || 14;
+        const fill = cs.color || "#ffffff";
+        const fontWeight = cs.fontWeight || "400";
+        const fontFamily = cs.fontFamily || "sans-serif";
+
+        const toX = (clientX: number) => (clientX - svgRect.left) * sx;
+        const toY = (clientY: number) => (clientY - svgRect.top) * sy;
+
+        const makeText = (
+          box: DOMRect,
+          textContent: string,
+          opacity: string
+        ): SVGTextElement => {
+          const t = document.createElementNS(SVG_NS, "text");
+          t.setAttribute("x", String(toX(box.left)));
+          // dominant-baseline:middle → y 用字符盒子垂直中心，匹配 flex 垂直居中
+          t.setAttribute("y", String(toY(box.top + box.height / 2)));
+          t.setAttribute("fill", fill);
+          t.setAttribute("font-size", String(fontSize));
+          t.setAttribute("font-weight", String(fontWeight));
+          t.setAttribute("font-family", fontFamily);
+          t.setAttribute("dominant-baseline", "middle");
+          t.setAttribute("text-anchor", "start");
+          if (opacity && opacity !== "1") t.setAttribute("opacity", opacity);
+          t.textContent = textContent;
+          return t;
+        };
+
+        // SplitText 拆分：逐字/逐词，每个子元素有各自的盒子（含 gsap 设的位移），
+        // 逐个生成 <text>，保留该帧的逐字动画位置。
+        const splits = foOrig.querySelectorAll(".split-char, .split-word");
+        if (splits.length > 0) {
+          splits.forEach((node) => {
+            const el = node as HTMLElement;
+            frag.appendChild(
+              makeText(
+                el.getBoundingClientRect(),
+                el.textContent || "",
+                el.style.opacity
+              )
+            );
+          });
+        } else {
+          frag.appendChild(
+            makeText(
+              root.getBoundingClientRect(),
+              root.textContent || "",
+              root.style.opacity
+            )
+          );
+        }
+      }
+    }
+    // 用生成的 <text> 替换 foreignObject；异常分支 frag 为空 → 等于移除该文字，
+    // 但绝不能残留 foreignObject，否则仍会 taint 整个画布。
+    parent.replaceChild(frag, foClone);
+  });
+}
+
 // 把某一帧的 SVG 渲染到给定 ctx（不新建 canvas）。
 // GIF/WebM 经 svgToCanvas 包一层拿 ImageData；MP4 直接画到固定 canvas
 // 喂给 mediabunny（流式，省内存）。
@@ -54,6 +157,11 @@ async function drawSvgFrame(
   // 避免导出文件中出现 data-edit-only 标记的 UI 叠加层。
   const clone = svgEl.cloneNode(true) as SVGSVGElement;
   clone.querySelectorAll('[data-edit-only="true"]').forEach((el) => el.remove());
+
+  // text actor 经 <foreignObject> 渲染；含 foreignObject 的 SVG 经 <img>+drawImage
+  // 栅格化会让 canvas 被 tainted，随后的 getImageData 抛 SecurityError。导出前把
+  // 所有 foreignObject 换成等价 SVG <text>，根除污染源（GIF/WebM/MP4 全受益）。
+  replaceTextForeignObjects(svgEl, clone);
 
   // 实际栅格化尺寸：scale<1 时降采样（GIF 用，控制体积与编码耗时）。
   const outW = Math.round(width * scale);
